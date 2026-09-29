@@ -1,8 +1,9 @@
 # butwhy.nvim
 
 Highlight a passage in Neovim, such as a line of code, a paragraph or a LaTeX equation, and get it
-explained at your level in a chat beside the file. The highlight is the topic; about 40 lines on
-either side are sent as context only, so the answer stays on what you selected.
+explained at your level in a small pop-up right under it. Still unclear? Ask "but why?" and it
+re-explains one level simpler, as many times as you like. The highlight is the topic; about 40
+lines on either side are sent as context only, so the answer stays on what you selected.
 
 butwhy is built on [CodeCompanion.nvim](https://github.com/olimorris/codecompanion.nvim), a
 Neovim plugin that connects chat buffers to large language model (LLM) providers, so it works
@@ -31,6 +32,10 @@ require('butwhy').setup()
 ```
 
 Any plugin manager works, as long as `butwhy.setup()` runs after CodeCompanion's setup.
+
+The default model, GPT-6 Luna, needs an OpenAI API key in `OPENAI_API_KEY`. Without one, use the
+free option instead: create a key at ollama.com, set `OLLAMA_API_KEY`, and call
+`require('butwhy').setup { adapter = 'ollama_cloud' }`. See [Choose a model](#choose-a-model).
 
 ## Tell it who you are
 
@@ -153,7 +158,8 @@ highlights is a small set: only gaps of roughly 15 to 30 percentage points, depe
 pair, are larger than the noise. GPT-6 Luna's lead over Gemma 4 31B held in both grading passes
 that included them; its lead over Kimi K3 did not. Models graded in several passes scored
 within about 4 percentage points of their own average each time. The grader was itself a
-language model. One highlight, a piece of collision-avoidance geometry, was answered wrongly or
+language model. The evaluation set is not published, because several highlights come from
+unpublished code; the table is a guide, not a reproducible benchmark. One highlight, a piece of collision-avoidance geometry, was answered wrongly or
 imprecisely by nearly every model. Times are for each provider's service on the day, including
 queueing on free plans.
 
