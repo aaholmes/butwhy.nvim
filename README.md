@@ -64,7 +64,8 @@ ignoring parts of long instructions.
 ## Use
 
 Select text in visual mode and press `<leader>we` (or run `:'<,'>ButwhyExplain`). A pop-up
-shows only the answer: a few sentences on what the highlight is and what it does in this
+opens directly under the selection (or above it, near the bottom of the window), the selected
+text turns orange until the pop-up closes, and the pop-up shows only the answer: a few sentences on what the highlight is and what it does in this
 particular file. The prompt and your background are sent to the model but not shown.
 
 The pop-up is an ordinary CodeCompanion chat, so you can type a follow-up question at the bottom
@@ -102,6 +103,9 @@ require('butwhy').setup {
   max_width = 80,
 }
 ```
+
+The orange comes from the `ButwhyHighlight` highlight group; set it in your colour scheme or
+with `vim.api.nvim_set_hl(0, 'ButwhyHighlight', { ... })` to change it.
 
 ## Tests
 

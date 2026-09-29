@@ -32,6 +32,9 @@ end
 vim.fn.writefile(lines, file)
 vim.cmd.edit(file)
 local source_win = vim.api.nvim_get_current_win()
+vim.api.nvim_win_set_cursor(source_win, { 100, 0 })
+vim.cmd 'normal! zz'
+vim.cmd.redraw()
 
 vim.cmd '100,101ButwhyExplain'
 local chat = require('codecompanion').last_chat()
@@ -52,6 +55,36 @@ check('the answer opens in a titled floating window', function()
   local title = type(cfg.title) == 'table' and cfg.title[1][1] or cfg.title
   assert(tostring(title):find('butwhy', 1, true), 'title = ' .. vim.inspect(cfg.title))
   assert(win ~= source_win, 'answer replaced the source window')
+end)
+
+-- Editor rows (0-based) of the first and last screen lines of the highlight in the source window.
+local function highlight_rows(first, last)
+  local top = vim.fn.screenpos(source_win, first, 1).row - 1
+  local bottom = vim.fn.screenpos(source_win, last, math.max(1, #vim.fn.getbufline(vim.api.nvim_win_get_buf(source_win), last)[1])).row - 1
+  return top, bottom
+end
+
+check('the pop-up opens right under the highlight', function()
+  local cfg = vim.api.nvim_win_get_config(win)
+  local _, bottom = highlight_rows(100, 101)
+  eq(cfg.relative, 'editor', 'relative')
+  eq(cfg.row, bottom + 1, 'border row vs the line below the highlight')
+  eq(cfg.col, vim.fn.screenpos(source_win, 100, 1).col - 1, 'left edge vs the text column')
+end)
+
+local hl_ns = vim.api.nvim_create_namespace 'butwhy.highlight'
+local function highlight_marks()
+  return vim.api.nvim_buf_get_extmarks(vim.api.nvim_win_get_buf(source_win), hl_ns, 0, -1, { details = true })
+end
+
+check('the highlighted text is orange while the pop-up is open', function()
+  local marks = highlight_marks()
+  eq(#marks, 1, 'highlight extmarks')
+  local m = marks[1]
+  eq(m[2], 99, 'start row')
+  eq(m[4].end_row, 100, 'end row')
+  eq(m[4].hl_group, 'ButwhyHighlight', 'hl group')
+  eq(vim.api.nvim_get_hl(0, { name = 'ButwhyHighlight' }).fg, 0xff8800, 'orange foreground')
 end)
 
 check('other chats keep the configured layout', function() eq(config.display.chat.window.layout, 'vertical', 'global layout') end)
@@ -155,11 +188,36 @@ end)
 
 check('reopening the pop-up keeps its style and size', function()
   chat.ui:hide()
+  vim.wait(200)
+  eq(#highlight_marks(), 0, 'highlight while hidden')
   chat.ui:open()
   vim.wait(200)
   local w = chat.ui.winnr
   eq(vim.wo[w].number, false, 'number after reopen')
   eq(vim.api.nvim_win_get_config(w).height, vim.api.nvim_win_text_height(w, {}).all, 'height after reopen')
+  local _, bottom = highlight_rows(100, 101)
+  eq(vim.api.nvim_win_get_config(w).row, bottom + 1, 'position after reopen')
+  eq(#highlight_marks(), 1, 'highlight after reopen')
+end)
+
+check('closing the pop-up clears the highlight', function()
+  vim.api.nvim_win_close(chat.ui.winnr, true)
+  vim.wait(200)
+  eq(#highlight_marks(), 0, 'highlight after close')
+end)
+
+check('near the bottom of the window the pop-up opens above the highlight', function()
+  vim.api.nvim_set_current_win(source_win)
+  vim.api.nvim_win_set_cursor(source_win, { 200, 0 })
+  vim.cmd 'normal! zb'
+  vim.cmd.redraw()
+  vim.cmd '199,200ButwhyExplain'
+  vim.wait(5000, function() return done >= 3 end, 20)
+  vim.wait(200)
+  local c = require('codecompanion').last_chat()
+  local cfg = vim.api.nvim_win_get_config(c.ui.winnr)
+  local top = highlight_rows(199, 200)
+  eq(cfg.row + cfg.height + 2, top, 'bottom border row + 1 vs the highlight top row')
 end)
 
 h.finish()

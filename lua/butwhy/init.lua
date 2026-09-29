@@ -15,6 +15,8 @@ local defaults = {
 }
 
 local MIN_WIDTH = 30
+local hl_ns = vim.api.nvim_create_namespace 'butwhy.highlight'
+local anchors = {} -- chat bufnr -> the highlight it explains: { win, buf, first, last, first_col, last_col }
 
 local ns = vim.api.nvim_create_namespace 'butwhy.popup'
 
@@ -105,6 +107,43 @@ local function style(win)
   wo.conceallevel = 2
 end
 
+---Where the pop-up goes (editor row and column of its top-left border corner): directly under
+---the highlight, aligned with the text, or directly above it if there is not enough room below.
+---Screen positions come from screenpos(), so wrapped lines are accounted for. Centred when the
+---highlight is not on screen.
+local function place(a, width, height)
+  local centred = { row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1), col = math.floor((vim.o.columns - width) / 2) }
+  if not (a and vim.api.nvim_win_is_valid(a.win) and vim.api.nvim_win_get_buf(a.win) == a.buf) then return centred end
+  local last_text = vim.api.nvim_buf_get_lines(a.buf, a.last - 1, a.last, false)[1] or ''
+  local top = vim.fn.screenpos(a.win, a.first, 1)
+  local bottom = vim.fn.screenpos(a.win, a.last, math.max(1, #last_text))
+  if top.row == 0 or bottom.row == 0 then return centred end
+  local col = math.max(0, math.min(top.col - 1, vim.o.columns - width - 2))
+  local fits_below = bottom.row + height + 2 <= vim.o.lines - vim.o.cmdheight
+  local fits_above = top.row - 1 >= height + 2
+  if fits_below or not fits_above then return { row = bottom.row, col = col } end
+  return { row = top.row - 1 - height - 2, col = col }
+end
+
+---Colour the explained text while its pop-up is shown.
+local function show_highlight(a)
+  if not (a and vim.api.nvim_buf_is_valid(a.buf)) then return end
+  vim.api.nvim_buf_clear_namespace(a.buf, hl_ns, 0, -1)
+  local last_text = vim.api.nvim_buf_get_lines(a.buf, a.last - 1, a.last, false)[1] or ''
+  vim.api.nvim_buf_set_extmark(a.buf, hl_ns, a.first - 1, math.max(0, a.first_col - 1), {
+    end_row = a.last - 1,
+    end_col = math.min(math.max(a.last_col, 0), #last_text),
+    hl_group = 'ButwhyHighlight',
+    priority = 200, -- above treesitter and LSP semantic tokens
+  })
+end
+
+local function clear_highlight(a)
+  if a and vim.api.nvim_buf_is_valid(a.buf) then vim.api.nvim_buf_clear_namespace(a.buf, hl_ns, 0, -1) end
+end
+
+local function set_hl() vim.api.nvim_set_hl(0, 'ButwhyHighlight', { fg = '#ff8800', default = true }) end
+
 ---Resize a floating pop-up to its visible text: as wide as the longest line (wrapping at
 ---max_width) and as tall as the lines it displays, centred in the editor.
 local function fit(chat)
@@ -122,13 +161,8 @@ local function fit(chat)
   -- Set the width first: how many screen lines the text wraps to depends on it.
   vim.api.nvim_win_set_config(win, { width = width, height = 1 })
   local height = math.max(1, math.min(vim.api.nvim_win_text_height(win, {}).all, vim.o.lines - 6))
-  vim.api.nvim_win_set_config(win, {
-    relative = 'editor',
-    width = width,
-    height = height,
-    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1),
-    col = math.floor((vim.o.columns - width) / 2),
-  })
+  local pos = place(anchors[chat.bufnr], width, height)
+  vim.api.nvim_win_set_config(win, { relative = 'editor', width = width, height = height, row = pos.row, col = pos.col })
 end
 
 ---Open a chat in the pop-up window that shows only the model's answers. The prompt is sent as
@@ -158,6 +192,17 @@ local function open_popup(item, context)
   }
   if not chat then return end
 
+  local anchor = {
+    win = context.winnr,
+    buf = context.bufnr,
+    first = context.start_line,
+    last = context.end_line,
+    first_col = context.start_col,
+    last_col = context.end_col,
+  }
+  anchors[chat.bufnr] = anchor
+  show_highlight(anchor)
+
   local pending = false
   local function refresh()
     if pending then return end
@@ -176,10 +221,22 @@ local function open_popup(item, context)
   vim.api.nvim_create_autocmd('BufWinEnter', {
     buffer = chat.bufnr,
     callback = function()
+      show_highlight(anchor)
       vim.schedule(function()
         if chat.ui.winnr and vim.api.nvim_win_is_valid(chat.ui.winnr) then style(chat.ui.winnr) end
         refresh()
       end)
+    end,
+  })
+  vim.api.nvim_create_autocmd({ 'BufWinLeave', 'BufWipeout' }, { buffer = chat.bufnr, callback = function() clear_highlight(anchor) end })
+  -- Keep the pop-up next to the highlight if the source window scrolls or the editor resizes.
+  local follow = vim.api.nvim_create_augroup('butwhy.follow.' .. chat.bufnr, { clear = true })
+  vim.api.nvim_create_autocmd({ 'WinScrolled', 'VimResized' }, { group = follow, callback = refresh })
+  vim.api.nvim_create_autocmd('BufWipeout', {
+    buffer = chat.bufnr,
+    callback = function()
+      anchors[chat.bufnr] = nil
+      pcall(vim.api.nvim_del_augroup_by_id, follow)
     end,
   })
   style(chat.ui.winnr)
@@ -207,6 +264,9 @@ function M.setup(opts)
   M.adapter = type(adapter) == 'string' and { name = adapter } or adapter or nil
   M.window = opts.window
   M.max_width = opts.max_width
+
+  set_hl()
+  vim.api.nvim_create_autocmd('ColorScheme', { group = vim.api.nvim_create_augroup('butwhy.hl', { clear = true }), callback = set_hl })
 
   if config.adapters.http.mercury == nil then config.adapters.http.mercury = mercury end
 
