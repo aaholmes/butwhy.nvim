@@ -89,9 +89,17 @@ check('rules group butwhy points at the configured background and is not autoloa
   assert(not vim.tbl_contains(autoload, 'butwhy'), 'butwhy must not be autoloaded')
 end)
 
-check('default adapter is Mercury 2.5', function()
-  eq(require('butwhy').adapter.name, 'mercury', 'adapter')
-  eq(require('butwhy').adapter.model, 'mercury-2.5', 'model')
+check('default adapter is Gemma 4 31B on Ollama Cloud', function()
+  eq(require('butwhy').adapter.name, 'ollama_cloud', 'adapter')
+  eq(require('butwhy').adapter.model, 'gemma4:31b', 'model')
+end)
+
+check('built-in ollama_cloud adapter uses the Ollama Cloud endpoint', function()
+  local adapter = assert(require('codecompanion.adapters').resolve 'ollama_cloud', 'ollama_cloud adapter missing')
+  eq(adapter.env.url, 'https://ollama.com', 'url')
+  eq(adapter.env.chat_url, '/v1/chat/completions', 'chat_url')
+  eq(adapter.env.api_key, 'OLLAMA_API_KEY', 'api_key env var')
+  eq(adapter.schema.model.default, 'gemma4:31b', 'model')
 end)
 
 check('built-in mercury adapter uses the Inception endpoint', function()
@@ -108,15 +116,17 @@ check('built-in mercury adapter sends reasoning_effort = instant', function()
   eq(adapter.parameters.reasoning_effort, 'instant', 'reasoning_effort')
 end)
 
-check('a user-defined mercury adapter is not replaced', function()
-  local cfg = require 'codecompanion.config'
-  local mine = function() end
-  local before = cfg.adapters.http.mercury
-  cfg.adapters.http.mercury = mine
-  require('butwhy').setup { background = root .. '/tests/fixtures/background.md' }
-  assert(cfg.adapters.http.mercury == mine, "setup overwrote the user's mercury adapter")
-  cfg.adapters.http.mercury = before
-end)
+for _, name in ipairs { 'mercury', 'ollama_cloud' } do
+  check('a user-defined ' .. name .. ' adapter is not replaced', function()
+    local cfg = require 'codecompanion.config'
+    local mine = function() end
+    local before = cfg.adapters.http[name]
+    cfg.adapters.http[name] = mine
+    require('butwhy').setup { background = root .. '/tests/fixtures/background.md' }
+    assert(cfg.adapters.http[name] == mine, "setup overwrote the user's " .. name .. ' adapter')
+    cfg.adapters.http[name] = before
+  end)
+end
 
 check('adapter option accepts a table, a name, or false', function()
   local butwhy = require 'butwhy'

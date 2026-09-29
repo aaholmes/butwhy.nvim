@@ -7,7 +7,7 @@ local defaults = {
   background = '~/.config/butwhy/background.md',
   -- Any CodeCompanion adapter: a name, { name = ..., model = ... }, or false to use the
   -- chat adapter configured in CodeCompanion.
-  adapter = { name = 'mercury', model = 'mercury-2.5' },
+  adapter = { name = 'ollama_cloud', model = 'gemma4:31b' },
   -- The answer pop-up: any CodeCompanion chat window options, applied to butwhy chats only.
   -- A floating pop-up is resized to fit its text, up to max_width columns.
   window = { layout = 'float', width = 40, height = 1, border = 'rounded', title = ' butwhy ' },
@@ -31,8 +31,18 @@ local last_popup -- bufnr of the most recently opened pop-up
 
 local ns = vim.api.nvim_create_namespace 'butwhy.popup'
 
--- Mercury (Inception Labs) speaks the OpenAI chat format. Registered only if the user has no
--- adapter of that name, so the default adapter works without extra configuration.
+-- Gemma 4 31B on Ollama Cloud, the default: free plan available, prompts not logged or trained
+-- on, about a second per answer, and among the most accurate models in the September 2026
+-- comparison (see README). Registered only if the user has no adapter of that name.
+local function ollama_cloud()
+  return require('codecompanion.adapters').extend('openai_compatible', {
+    env = { url = 'https://ollama.com', chat_url = '/v1/chat/completions', api_key = 'OLLAMA_API_KEY' },
+    schema = { model = { default = 'gemma4:31b' } },
+  })
+end
+
+-- Mercury (Inception Labs), the fastest option tested, speaks the OpenAI chat format. Registered
+-- only if the user has no adapter of that name, so it can be chosen by name without extra setup.
 -- reasoning_effort defaults to 'instant': the API's own default, 'medium', spends a few seconds
 -- reasoning before the first word, which is too slow for a pop-up.
 local function mercury()
@@ -311,6 +321,7 @@ function M.setup(opts)
   set_hl()
   vim.api.nvim_create_autocmd('ColorScheme', { group = vim.api.nvim_create_augroup('butwhy.hl', { clear = true }), callback = set_hl })
 
+  if config.adapters.http.ollama_cloud == nil then config.adapters.http.ollama_cloud = ollama_cloud end
   if config.adapters.http.mercury == nil then config.adapters.http.mercury = mercury end
 
   -- Not autoloaded: only butwhy's pop-ups attach this group, so coding chats stay clean.

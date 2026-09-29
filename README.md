@@ -81,12 +81,15 @@ the bottom.
 
 ## Choose a model
 
-The default is Mercury 2.5 from Inception Labs, a diffusion language model (it refines many
-tokens in parallel rather than generating one at a time), chosen because it is fast and cheap.
-Set `INCEPTION_API_KEY` to use it; butwhy defines the `mercury` adapter for you unless you
-already have one. That adapter sets Mercury's `reasoning_effort` to `instant`, which skips the
-model's hidden reasoning step; at the API's default (`medium`) the first word takes a few seconds
-to arrive. You can change it from the chat's settings like any other adapter parameter.
+The default is Gemma 4 31B on Ollama Cloud, which has a free plan: create a key at ollama.com and
+set `OLLAMA_API_KEY`. butwhy defines the `ollama_cloud` adapter for you unless you already have
+one. The comparison below explains the choice.
+
+butwhy also defines a `mercury` adapter for Mercury 2.5 from Inception Labs, a diffusion language
+model (it refines many tokens in parallel rather than generating one at a time) and the fastest
+option tested. Set `INCEPTION_API_KEY` and pass `adapter = 'mercury'` to use it. That adapter sets
+Mercury's `reasoning_effort` to `instant`, which skips the model's hidden reasoning step; at the
+API's default (`medium`) the first word takes a few seconds to arrive.
 
 To use something else, pass any CodeCompanion adapter:
 
@@ -99,12 +102,53 @@ require('butwhy').setup { adapter = false }    -- CodeCompanion's configured cha
 You can also switch adapter inside any open chat with CodeCompanion's own keymap (press `?` in
 the chat to list them).
 
+### Recommended models
+
+- **Free (the default):** Gemma 4 31B on Ollama Cloud's free plan. It was about as accurate as
+  the best models tested, the most consistent at making each "simpler" step genuinely simpler,
+  and answered in about a second. Ollama states that cloud prompts are not logged or used for
+  training.
+- **Most accurate tested:** Kimi K3 or DeepSeek V4 Pro on Baseten, both with reasoning turned off.
+  DeepSeek costs less than half as much per token.
+- **Fastest and cheapest:** Mercury 2.5 (`adapter = 'mercury'`), at the cost of lower accuracy.
+
+Models on Baseten, Groq and similar hosts use the same OpenAI-compatible format; define an
+adapter by extending `openai_compatible` with the host's URL, key variable and model name, as
+butwhy's own `ollama_cloud` adapter does in `lua/butwhy/init.lua`.
+
+### Model comparison
+
+Each model explained 13 highlights at four levels (the first answer plus three "simpler"
+steps): Python, Rust and C code, a GPU kernel, LaTeX equations, a Markdown design note, and two
+Wikipedia passages outside the reader's field (property law and immunology). A separate model
+graded every answer using a written reference answer, without knowing which model produced it.
+All models ran with reasoning off, or at its lowest setting where it cannot be turned off, so
+none was spending extra time thinking. Tested September 2026.
+
+| Model (provider) | Answers fully correct | First answer correct | Steps judged simpler | Median time | Price per 1M tokens (input / output) |
+|---|---|---|---|---|---|
+| Kimi K3 (Baseten) | 75% (39/52) | 10/13 | 67% | 1.5 s | $3.00 / $15.00 |
+| DeepSeek V4 Pro (Baseten) | 67% (35/52) | 7/13 | 72% | 1.2 s | $1.32 / $3.96 |
+| Gemma 4 31B (Ollama Cloud) | 62% (32/52) | 9/13 | 85% | 1.0 s | free plan; $0.14 / $0.40 after |
+| Mercury 2.5, `instant` (Inception) | 46% (24/52) | 5/13 | 54% | 0.9 s | $0.04 / $0.15 (launch price) |
+| Nemotron 3 Ultra (Ollama Cloud) | 44% (23/52) | 3/13 | 74% | 14 s | free plan |
+| Qwen 3.8 27B (Groq) | 42% (22/52) | 4/13 | 79% | 0.6 s | free plan |
+| Mercury 2.5, `low` (Inception) | 40% (21/52) | 7/13 | 46% | 1.3 s | $0.04 / $0.15 (launch price) |
+| gpt-oss-120b, low reasoning (Groq) | 29% (15/52) | 3/13 | 54% | 1.2 s | free plan |
+
+Read the table with its limits in mind. Each model gave one answer per highlight, and 13
+highlights is a small set: only gaps of roughly 25 to 30 percentage points are larger than the
+noise, so the top three are not distinguishable from each other. The grader was itself a
+language model. One highlight, a piece of collision-avoidance geometry, was answered wrongly or
+imprecisely by every model. Gemini 3.5 Flash-Lite and Cohere North-mini-code were tested on too
+few highlights to include.
+
 ## Options
 
 ```lua
 require('butwhy').setup {
   background = '~/.config/butwhy/background.md',
-  adapter = { name = 'mercury', model = 'mercury-2.5' },
+  adapter = { name = 'ollama_cloud', model = 'gemma4:31b' },
   -- Pop-up window; takes any CodeCompanion chat window option, and affects butwhy chats only.
   -- A floating pop-up is resized to fit its text, wrapping at max_width columns.
   window = { layout = 'float', border = 'rounded', title = ' butwhy ' },
