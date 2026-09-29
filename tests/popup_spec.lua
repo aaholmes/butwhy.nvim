@@ -289,4 +289,39 @@ end)
 
 check(':ButwhySimpler exists for users without the keymap', function() eq(vim.fn.exists(':ButwhySimpler'), 2, 'command') end)
 
+check('the border and title use the highlight colour', function()
+  local w = drill.ui.winnr
+  local whl = vim.wo[w].winhighlight
+  assert(whl:find('FloatBorder:ButwhyBorder', 1, true), 'winhighlight = ' .. whl)
+  assert(whl:find('FloatTitle:ButwhyBorder', 1, true), 'winhighlight = ' .. whl)
+  local src = vim.api.nvim_get_hl(0, { name = 'ButwhyHighlight', link = false })
+  eq(vim.api.nvim_get_hl(0, { name = 'ButwhyBorder', link = false }).fg, src.bg or src.fg, 'border colour')
+end)
+
+check('the footer names the model', function()
+  local f = vim.api.nvim_win_get_config(drill.ui.winnr).footer
+  local text = type(f) == 'table' and f[1][1] or tostring(f)
+  assert(text:find('mock-model', 1, true), 'footer = ' .. vim.inspect(f))
+end)
+
+local hl_ns2 = vim.api.nvim_create_namespace 'butwhy.highlight'
+local function source_marks() return #vim.api.nvim_buf_get_extmarks(vim.api.nvim_win_get_buf(source_win), hl_ns2, 0, -1, {}) end
+
+for _, key in ipairs { 'q', '<Esc>' } do
+  check(key .. ' in Normal mode closes the pop-up and clears the highlight', function()
+    if not (drill.ui.winnr and vim.api.nvim_win_is_valid(drill.ui.winnr)) then
+      drill.ui:open()
+      vim.wait(200)
+    end
+    local w = drill.ui.winnr
+    vim.api.nvim_set_current_win(w)
+    vim.cmd 'stopinsert'
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(key, true, false, true), 'x', false)
+    vim.wait(200)
+    eq(vim.api.nvim_win_is_valid(w), false, 'window still open')
+    eq(source_marks(), 0, 'highlight left behind')
+    eq(vim.api.nvim_buf_is_valid(drill.bufnr), true, 'chat buffer kept for reopening')
+  end)
+end
+
 h.finish()

@@ -77,7 +77,9 @@ CodeCompanion's send key (`<C-s>` in Insert mode, `<CR>` in Normal mode, by defa
 highlight and its surroundings are sent along with the question but not shown.
 
 Either pop-up is an ordinary CodeCompanion chat, so you can keep typing follow-up questions at
-the bottom.
+the bottom. The model answering is shown in the pop-up's bottom border. Press `q` or `<Esc>` in
+Normal mode to close it (in butwhy pop-ups these replace CodeCompanion's `q`, which stops an
+answer mid-stream).
 
 ## Choose a model
 
@@ -165,15 +167,16 @@ require('butwhy').setup {
   -- A floating pop-up is resized to fit its text, wrapping at max_width columns.
   window = { layout = 'float', border = 'rounded', title = ' butwhy ' },
   max_width = 80,
-  -- Keys butwhy maps (`simpler` only inside the pop-up); false, for all or one, maps nothing.
-  -- :ButwhyExplain, :ButwhyAsk and :ButwhySimpler work either way.
-  keymaps = { explain = '<leader>we', ask = '<leader>wa', simpler = '<leader>ws' },
+  -- Keys butwhy maps (`simpler` and `close` only inside the pop-up); false, for all or one,
+  -- maps nothing. :ButwhyExplain, :ButwhyAsk and :ButwhySimpler work either way.
+  keymaps = { explain = '<leader>we', ask = '<leader>wa', simpler = '<leader>ws', close = { 'q', '<Esc>' } },
 }
 ```
 
-That highlight uses the `ButwhyHighlight` group, linked by default to `IncSearch`, the group
-Neovim flashes when you yank text. Set `ButwhyHighlight` in your colour scheme or with
-`vim.api.nvim_set_hl(0, 'ButwhyHighlight', { ... })` to change it.
+The selected text uses the `ButwhyHighlight` group, linked by default to `IncSearch`, the group
+Neovim flashes when you yank text. The pop-up's border and title use `ButwhyBorder`, drawn in the
+same colour (the highlight's background, where it has one). Set either group in your colour
+scheme or with `vim.api.nvim_set_hl(0, 'ButwhyHighlight', { ... })` to change it.
 
 ## Tests
 

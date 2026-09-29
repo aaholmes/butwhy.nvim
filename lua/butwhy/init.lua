@@ -13,7 +13,8 @@ local defaults = {
   window = { layout = 'float', width = 40, height = 1, border = 'rounded', title = ' butwhy ' },
   max_width = 80,
   -- Keys butwhy maps; false (for all, or one entry) maps nothing. The commands work either way.
-  keymaps = { explain = '<leader>we', ask = '<leader>wa', simpler = '<leader>ws' },
+  -- `simpler` and `close` (Normal mode) apply inside the pop-up only.
+  keymaps = { explain = '<leader>we', ask = '<leader>wa', simpler = '<leader>ws', close = { 'q', '<Esc>' } },
 }
 
 -- The drill-down request. The level counter is kept here, not left to the model.
@@ -138,6 +139,14 @@ local function style(win)
   local wo = vim.wo[win]
   wo.number, wo.relativenumber, wo.signcolumn, wo.foldcolumn, wo.statuscolumn = false, false, 'no', '0', ''
   wo.conceallevel = 2
+  wo.winhighlight = 'FloatBorder:ButwhyBorder,FloatTitle:ButwhyBorder,FloatFooter:ButwhyBorder'
+end
+
+---The model a chat is using, for the pop-up's footer.
+local function model_name(chat)
+  local m = chat.settings and chat.settings.model
+  if type(m) ~= 'string' then m = chat.adapter and chat.adapter.schema and chat.adapter.schema.model.default end
+  return type(m) == 'string' and m or nil
 end
 
 ---Where the pop-up goes (editor row and column of its top-left border corner): directly under
@@ -176,7 +185,12 @@ local function clear_highlight(a)
 end
 
 -- Same colours as the flash from vim.hl.on_yank() (IncSearch; orange background in many themes).
-local function set_hl() vim.api.nvim_set_hl(0, 'ButwhyHighlight', { link = 'IncSearch', default = true }) end
+-- The pop-up's border and title draw lines in that colour: its background where it has one.
+local function set_hl()
+  vim.api.nvim_set_hl(0, 'ButwhyHighlight', { link = 'IncSearch', default = true })
+  local src = vim.api.nvim_get_hl(0, { name = 'ButwhyHighlight', link = false })
+  vim.api.nvim_set_hl(0, 'ButwhyBorder', { fg = src.bg or src.fg, default = true })
+end
 
 ---Resize a floating pop-up to its visible text: as wide as the longest line (wrapping at
 ---max_width) and as tall as the lines it displays, placed next to the highlight. The title
@@ -200,6 +214,8 @@ local function fit(chat)
   local pos = place(st and st.anchor, width, height)
   local config = { relative = 'editor', width = width, height = height, row = pos.row, col = pos.col }
   if st then config.title = st.level > 0 and string.format(' butwhy · level %d ', st.level) or st.title end
+  local model = model_name(chat)
+  if model then config.footer, config.footer_pos = ' ' .. model .. ' ', 'right' end
   vim.api.nvim_win_set_config(win, config)
 end
 
@@ -241,6 +257,11 @@ local function open_popup(kind, context)
   show_highlight(anchor)
   if M.keys.simpler then
     vim.keymap.set('n', M.keys.simpler, function() M.simpler(chat.bufnr) end, { buffer = chat.bufnr, desc = 'butwhy: explain one level simpler' })
+  end
+  -- Set after CodeCompanion's own chat keymaps, so these win (its default `q` stops a request).
+  local close = M.keys.close
+  for _, key in ipairs(type(close) == 'table' and close or { close }) do
+    if key then vim.keymap.set('n', key, function() chat.ui:hide() end, { buffer = chat.bufnr, desc = 'butwhy: close pop-up' }) end
   end
 
   local pending = false
