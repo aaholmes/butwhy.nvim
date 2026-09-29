@@ -142,7 +142,8 @@ local function clear_highlight(a)
   if a and vim.api.nvim_buf_is_valid(a.buf) then vim.api.nvim_buf_clear_namespace(a.buf, hl_ns, 0, -1) end
 end
 
-local function set_hl() vim.api.nvim_set_hl(0, 'ButwhyHighlight', { fg = '#ff8800', default = true }) end
+-- Same colours as the flash from vim.hl.on_yank() (IncSearch; orange background in many themes).
+local function set_hl() vim.api.nvim_set_hl(0, 'ButwhyHighlight', { link = 'IncSearch', default = true }) end
 
 ---Resize a floating pop-up to its visible text: as wide as the longest line (wrapping at
 ---max_width) and as tall as the lines it displays, centred in the editor.

@@ -84,7 +84,8 @@ check('the highlighted text is orange while the pop-up is open', function()
   eq(m[2], 99, 'start row')
   eq(m[4].end_row, 100, 'end row')
   eq(m[4].hl_group, 'ButwhyHighlight', 'hl group')
-  eq(vim.api.nvim_get_hl(0, { name = 'ButwhyHighlight' }).fg, 0xff8800, 'orange foreground')
+  -- Same colours as the yank flash from vim.hl.on_yank(), which uses IncSearch.
+  eq(vim.api.nvim_get_hl(0, { name = 'ButwhyHighlight' }).link, 'IncSearch', 'link')
 end)
 
 check('other chats keep the configured layout', function() eq(config.display.chat.window.layout, 'vertical', 'global layout') end)
