@@ -8,13 +8,12 @@ butwhy is built on [CodeCompanion.nvim](https://github.com/olimorris/codecompani
 Neovim plugin that connects chat buffers to large language model (LLM) providers, so it works
 with any model CodeCompanion supports.
 
-**Status:** early. Explaining a highlight and drilling down to simpler levels work. Planned next:
-free-form questions about a highlight, and web search for further reading.
+**Status:** early. Explaining a highlight, drilling down to simpler levels, and asking your own
+questions about a highlight work. Planned next: web search for further reading.
 
 ## Requirements
 
 - Neovim 0.12 and CodeCompanion v19 (tested with 0.12.4 and v19.22)
-- The treesitter `yaml` parser, which CodeCompanion uses to read Markdown prompts
 - An API key for the model you choose, or a local model server
 
 ## Install
@@ -72,8 +71,13 @@ one level simpler: less jargon, every term the previous answer relied on defined
 example. Press it again to keep going; the title shows the level, and the pop-up shows only the
 latest answer.
 
-The pop-up is an ordinary CodeCompanion chat, so you can also type a follow-up question at the
-bottom and send it with CodeCompanion's usual keys.
+To ask something specific instead, select text and press `<leader>wa` (or run
+`:'<,'>ButwhyAsk`). The pop-up opens in Insert mode; type your question and send it with
+CodeCompanion's send key (`<C-s>` in Insert mode, `<CR>` in Normal mode, by default). The
+highlight and its surroundings are sent along with the question but not shown.
+
+Either pop-up is an ordinary CodeCompanion chat, so you can keep typing follow-up questions at
+the bottom.
 
 ## Choose a model
 
@@ -106,8 +110,8 @@ require('butwhy').setup {
   window = { layout = 'float', border = 'rounded', title = ' butwhy ' },
   max_width = 80,
   -- Keys butwhy maps (`simpler` only inside the pop-up); false, for all or one, maps nothing.
-  -- :ButwhyExplain and :ButwhySimpler work either way.
-  keymaps = { explain = '<leader>we', simpler = '<leader>ws' },
+  -- :ButwhyExplain, :ButwhyAsk and :ButwhySimpler work either way.
+  keymaps = { explain = '<leader>we', ask = '<leader>wa', simpler = '<leader>ws' },
 }
 ```
 
@@ -123,6 +127,7 @@ inside Neovim, so no API key or network is needed:
 ```sh
 nvim --headless -u tests/minimal_init.lua -c 'luafile tests/butwhy_spec.lua'
 nvim --headless -u tests/minimal_init.lua -c 'luafile tests/popup_spec.lua'
+nvim --headless -u tests/minimal_init.lua -c 'luafile tests/ask_spec.lua'
 ```
 
 Dependencies are loaded with `:packadd`; set `BUTWHY_DEPS` to a directory containing

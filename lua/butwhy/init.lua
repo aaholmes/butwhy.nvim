@@ -1,5 +1,5 @@
--- butwhy: explain a highlighted passage at the reader's level, on top of CodeCompanion.
--- Call setup() after require('codecompanion').setup().
+-- butwhy: explain a highlighted passage at the reader's level, or answer questions about it, in a
+-- pop-up beside it. Built on CodeCompanion; call setup() after require('codecompanion').setup().
 local M = {}
 
 local defaults = {
@@ -12,8 +12,8 @@ local defaults = {
   -- A floating pop-up is resized to fit its text, up to max_width columns.
   window = { layout = 'float', width = 40, height = 1, border = 'rounded', title = ' butwhy ' },
   max_width = 80,
-  -- Keys butwhy maps; false (for all, or one entry) maps nothing. The command works either way.
-  keymaps = { explain = '<leader>we', simpler = '<leader>ws' },
+  -- Keys butwhy maps; false (for all, or one entry) maps nothing. The commands work either way.
+  keymaps = { explain = '<leader>we', ask = '<leader>wa', simpler = '<leader>ws' },
 }
 
 -- The drill-down request. The level counter is kept here, not left to the model.
@@ -22,17 +22,14 @@ local SIMPLER = 'Re-explain the HIGHLIGHT at level %d: one layer less jargon tha
 
 local MIN_WIDTH = 30
 local hl_ns = vim.api.nvim_create_namespace 'butwhy.highlight'
--- Per pop-up, keyed by chat bufnr: { chat, anchor, level, hide_before }. anchor is the highlight
--- it explains ({ win, buf, first, last, first_col, last_col }); hide_before is how many leading
--- buffer lines belong to earlier levels and are hidden.
+-- Per pop-up, keyed by chat bufnr: { chat, kind, title, anchor, level, hide_before, asked }.
+-- kind is 'explain' or 'ask'; anchor is the highlight it is about ({ win, buf, first, last,
+-- first_col, last_col }); hide_before is how many leading buffer lines belong to earlier levels
+-- and are hidden; asked is whether an ask pop-up has sent its first question.
 local states = {}
 local last_popup -- bufnr of the most recently opened pop-up
 
 local ns = vim.api.nvim_create_namespace 'butwhy.popup'
-
--- prompts/ sits two levels above this file: <root>/lua/butwhy/init.lua
-local root = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(debug.getinfo(1, 'S').source:sub(2))))
-M.prompt_dir = root .. '/prompts'
 
 -- Mercury (Inception Labs) speaks the OpenAI chat format. Registered only if the user has no
 -- adapter of that name, so the default adapter works without extra configuration.
@@ -57,18 +54,6 @@ local function mercury()
       },
     },
   })
-end
-
----Look up a butwhy prompt and attach the configured adapter, leaving the cached prompt untouched.
----@param alias string
----@param context CodeCompanion.BufferContext
----@return table|nil
-function M.resolve_item(alias, context)
-  local item = require('codecompanion.action_palette').resolve_from_alias(alias, context)
-  if not item then return nil end
-  item = vim.tbl_extend('force', {}, item)
-  item.opts = vim.tbl_extend('force', {}, item.opts or {}, { adapter = M.adapter })
-  return item
 end
 
 ---Build the buffer context the way :CodeCompanion does, but honour a typed range. CodeCompanion
@@ -110,6 +95,20 @@ local function conceal_plumbing(chat)
   for i = 1, #lines do
     if hide[i] then vim.api.nvim_buf_set_extmark(chat.bufnr, ns, i - 1, 0, { conceal_lines = '' }) end
   end
+end
+
+---In an ask pop-up that has not been used yet, show a placeholder on the input line saying what
+---to do. It goes away once the reader types or sends.
+local function show_hint(chat)
+  local st = states[chat.bufnr]
+  if not (st and st.kind == 'ask' and not st.asked) then return end
+  local lines = vim.api.nvim_buf_get_lines(chat.bufnr, 0, -1, false)
+  if vim.trim(lines[#lines]) ~= '' then return end
+  local modes = require('codecompanion.config').interactions.chat.keymaps.send.modes
+  local key = function(k) return type(k) == 'table' and k[1] or k end
+  local send = modes.i and (key(modes.i) .. ' (insert) or ') or ''
+  local hint = string.format('Ask a question about the highlighted text; send with %s%s', send, key(modes.n) or '<CR>')
+  vim.api.nvim_buf_set_extmark(chat.bufnr, ns, #lines - 1, 0, { virt_text = { { hint, 'Comment' } }, virt_text_pos = 'overlay' })
 end
 
 ---Hide the gutter (line numbers, signs, folds) and enable line concealing in the pop-up.
@@ -178,34 +177,31 @@ local function fit(chat)
   local st = states[chat.bufnr]
   local pos = place(st and st.anchor, width, height)
   local config = { relative = 'editor', width = width, height = height, row = pos.row, col = pos.col }
-  if st and st.level > 0 then config.title = string.format(' butwhy · level %d ', st.level) end
+  if st then config.title = st.level > 0 and string.format(' butwhy · level %d ', st.level) or st.title end
   vim.api.nvim_win_set_config(win, config)
 end
 
----Open a chat in the pop-up window that shows only the model's answers. The prompt is sent as
----hidden messages; the chat stays a normal CodeCompanion chat, so follow-ups work.
-local function open_popup(item, context)
+---Open a chat in a pop-up beside the highlight that shows only the conversation's visible part.
+---kind 'explain' sends the explain prompt at once; kind 'ask' sends nothing until the reader
+---types a question. Prompts go as hidden messages; the chat stays a normal CodeCompanion chat, so
+---follow-up questions work.
+local function open_popup(kind, context)
   local tags = require 'codecompanion.interactions.shared.tags'
-  local prompts = vim.deepcopy(item.prompts)
-  require('codecompanion.prompt_library.markdown').resolve_placeholders({ prompts = prompts, path = item.path }, context)
-
-  local system, user = {}, {}
-  for _, p in ipairs(prompts) do
-    table.insert(p.role == 'system' and system or user, p.content)
-  end
+  local prompts = require 'butwhy.prompts'
+  local title = kind == 'ask' and ' butwhy · ask ' or (M.window.title or ' butwhy ')
 
   local adapter = M.adapter and require('codecompanion.adapters').resolve(M.adapter.name, { model = M.adapter.model })
   local chat = require('codecompanion.interactions.chat').new {
     adapter = adapter,
     buffer_context = context,
-    callbacks = require('codecompanion.interactions.shared.rules.helpers').add_callbacks({ callbacks = {} }, item.rules),
+    callbacks = require('codecompanion.interactions.shared.rules.helpers').add_callbacks({ callbacks = {} }, { 'butwhy' }),
     from_prompt_library = true,
     ignore_system_prompt = true,
     messages = {
-      { role = 'system', content = table.concat(system, '\n\n'), opts = { visible = false, _meta = { tag = tags.FROM_CUSTOM_PROMPT } } },
+      { role = 'system', content = prompts.render('system', context), opts = { visible = false, _meta = { tag = tags.FROM_CUSTOM_PROMPT } } },
     },
     stop_context_insertion = true,
-    window_opts = M.window,
+    window_opts = vim.tbl_extend('force', M.window, { title = title }),
   }
   if not chat then return end
 
@@ -217,7 +213,8 @@ local function open_popup(item, context)
     first_col = context.start_col,
     last_col = context.end_col,
   }
-  states[chat.bufnr] = { chat = chat, anchor = anchor, level = 0, hide_before = 0 }
+  local st = { chat = chat, kind = kind, title = title, anchor = anchor, level = 0, hide_before = 0, asked = false }
+  states[chat.bufnr] = st
   last_popup = chat.bufnr
   show_highlight(anchor)
   if M.keys.simpler then
@@ -232,6 +229,7 @@ local function open_popup(item, context)
       pending = false
       if not vim.api.nvim_buf_is_valid(chat.bufnr) then return end
       conceal_plumbing(chat)
+      show_hint(chat)
       fit(chat)
     end)
   end
@@ -262,11 +260,24 @@ local function open_popup(item, context)
   })
   style(chat.ui.winnr)
   conceal_plumbing(chat)
+  show_hint(chat)
   fit(chat)
 
   -- Added after creation so the background (attached when the chat is created) precedes it.
-  chat:add_message({ role = 'user', content = table.concat(user, '\n\n') }, { visible = false })
-  chat:submit { auto_submit = true }
+  chat:add_message({ role = 'user', content = prompts.render(kind, context) }, { visible = false })
+  if kind == 'explain' then
+    chat:submit { auto_submit = true }
+  else
+    chat:add_callback('on_submitted', function() st.asked = true end)
+    vim.schedule(function()
+      local win = chat.ui.winnr
+      if not (win and vim.api.nvim_win_is_valid(win)) then return end
+      vim.api.nvim_set_current_win(win)
+      vim.api.nvim_win_set_cursor(win, { vim.api.nvim_buf_line_count(chat.bufnr), 0 })
+      -- Queued as a keypress: :startinsert from a scheduled callback is not reliably honoured.
+      vim.api.nvim_feedkeys('A', 'n', false)
+    end)
+  end
   return chat
 end
 
@@ -286,12 +297,7 @@ function M.simpler(bufnr)
   chat:submit { auto_submit = true }
 end
 
-local function run(alias, cmd_opts)
-  local context = get_context(cmd_opts)
-  local item = M.resolve_item(alias, context)
-  if not item then return vim.notify('butwhy: prompt ' .. alias .. ' not found', vim.log.levels.ERROR) end
-  open_popup(item, context)
-end
+local function run(kind, cmd_opts) open_popup(kind, get_context(cmd_opts)) end
 
 function M.setup(opts)
   opts = vim.tbl_extend('force', defaults, opts or {})
@@ -307,16 +313,14 @@ function M.setup(opts)
 
   if config.adapters.http.mercury == nil then config.adapters.http.mercury = mercury end
 
-  -- Not autoloaded: only the butwhy prompts name this group, so coding chats stay clean.
+  -- Not autoloaded: only butwhy's pop-ups attach this group, so coding chats stay clean.
   config.rules.butwhy = {
     description = 'Reader background for butwhy explanations',
     files = { opts.background },
   }
 
-  local dirs = config.prompt_library.markdown.dirs
-  if not vim.tbl_contains(dirs, M.prompt_dir) then table.insert(dirs, M.prompt_dir) end
-
-  vim.api.nvim_create_user_command('ButwhyExplain', function(o) run('butwhy_explain', o) end, { range = true, desc = 'butwhy: explain selection' })
+  vim.api.nvim_create_user_command('ButwhyExplain', function(o) run('explain', o) end, { range = true, desc = 'butwhy: explain selection' })
+  vim.api.nvim_create_user_command('ButwhyAsk', function(o) run('ask', o) end, { range = true, desc = 'butwhy: ask about selection' })
 
   -- Through `:` rather than a Lua call, so the '< and '> marks are set before the prompt
   -- reads the selection.
@@ -324,6 +328,7 @@ function M.setup(opts)
   M.keys = keys -- `simpler` is mapped per pop-up, in the chat buffer
   vim.api.nvim_create_user_command('ButwhySimpler', function() M.simpler() end, { desc = 'butwhy: explain one level simpler' })
   if keys.explain then vim.keymap.set('x', keys.explain, ':ButwhyExplain<CR>', { silent = true, desc = 'butwhy: explain selection' }) end
+  if keys.ask then vim.keymap.set('x', keys.ask, ':ButwhyAsk<CR>', { silent = true, desc = 'butwhy: ask about selection' }) end
 end
 
 return M
