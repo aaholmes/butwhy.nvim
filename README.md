@@ -63,9 +63,13 @@ ignoring parts of long instructions.
 
 ## Use
 
-Select text in visual mode and press `<leader>we` (or run `:'<,'>ButwhyExplain`). The answer
-gives a one-sentence explanation, what the highlight means in this particular file, a concrete
-example, and search terms for going deeper.
+Select text in visual mode and press `<leader>we` (or run `:'<,'>ButwhyExplain`). A pop-up
+shows only the answer: a one-sentence explanation, what the highlight means in this particular
+file, a concrete example, and search terms for going deeper. The prompt and your background are
+sent to the model but not shown.
+
+The pop-up is an ordinary CodeCompanion chat, so you can type a follow-up question at the bottom
+and send it with CodeCompanion's usual keys.
 
 ## Choose a model
 
@@ -91,15 +95,19 @@ the chat to list them).
 require('butwhy').setup {
   background = '~/.config/butwhy/background.md',
   adapter = { name = 'mercury', model = 'mercury-2.5' },
+  -- Pop-up window; takes any CodeCompanion chat window option, and affects butwhy chats only
+  window = { layout = 'float', width = 0.6, height = 0.6, border = 'rounded', title = ' butwhy ' },
 }
 ```
 
 ## Tests
 
-Headless checks that send no model requests:
+Headless checks. The pop-up checks drive a real chat through a mock model server running
+inside Neovim, so no API key or network is needed:
 
 ```sh
 nvim --headless -u tests/minimal_init.lua -c 'luafile tests/butwhy_spec.lua'
+nvim --headless -u tests/minimal_init.lua -c 'luafile tests/popup_spec.lua'
 ```
 
 Dependencies are loaded with `:packadd`; set `BUTWHY_DEPS` to a directory containing
