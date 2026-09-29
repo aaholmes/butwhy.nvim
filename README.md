@@ -104,3 +104,7 @@ nvim --headless -u tests/minimal_init.lua -c 'luafile tests/butwhy_spec.lua'
 
 Dependencies are loaded with `:packadd`; set `BUTWHY_DEPS` to a directory containing
 `plenary.nvim` and `codecompanion.nvim` to use other copies.
+
+## License
+
+MIT; see [LICENSE](LICENSE).
