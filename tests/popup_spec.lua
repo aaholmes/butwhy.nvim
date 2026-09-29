@@ -125,6 +125,12 @@ check('the answer is the first line shown, with no run of blank lines', function
   assert(not shown:find('\n\n\n', 1, true), 'run of blank lines in:\n' .. shown)
 end)
 
+check('the answer is scrolled into view, not above the top of the window', function()
+  -- With the cursor on the chat's last line, Neovim would scroll that line to the top; the
+  -- whole conversation fits, so the view must start at the first line.
+  eq(vim.fn.getwininfo(win)[1].topline, 1, 'topline')
+end)
+
 check('the pop-up has no line numbers or sign column', function()
   eq(vim.wo[win].number, false, 'number')
   eq(vim.wo[win].relativenumber, false, 'relativenumber')

@@ -209,7 +209,8 @@ local function fit(chat)
   local width = math.max(MIN_WIDTH, math.min(longest + 1, M.max_width, vim.o.columns - 4))
   -- Set the width first: how many screen lines the text wraps to depends on it.
   vim.api.nvim_win_set_config(win, { width = width, height = 1 })
-  local height = math.max(1, math.min(vim.api.nvim_win_text_height(win, {}).all, vim.o.lines - 6))
+  local needed = vim.api.nvim_win_text_height(win, {}).all
+  local height = math.max(1, math.min(needed, vim.o.lines - 6))
   local st = states[chat.bufnr]
   local pos = place(st and st.anchor, width, height)
   local config = { relative = 'editor', width = width, height = height, row = pos.row, col = pos.col }
@@ -217,6 +218,9 @@ local function fit(chat)
   local model = model_name(chat)
   if model then config.footer, config.footer_pos = ' ' .. model .. ' ', 'right' end
   vim.api.nvim_win_set_config(win, config)
+  -- With the cursor on the chat's last line, Neovim scrolls that line to the top and the answer
+  -- above it drops out of view. When everything fits, show it from the first line.
+  if needed <= height then vim.api.nvim_win_call(win, function() vim.fn.winrestview { topline = 1 } end) end
 end
 
 ---Open a chat in a pop-up beside the highlight that shows only the conversation's visible part.

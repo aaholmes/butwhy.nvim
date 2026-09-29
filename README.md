@@ -1,5 +1,7 @@
 # butwhy.nvim
 
+![Selecting a line of NumPy code, explaining it with <leader>we, then pressing <leader>ws twice for simpler explanations](docs/demo.gif)
+
 Highlight a passage in Neovim, such as a line of code, a paragraph or a LaTeX equation, and get it
 explained at your level in a small pop-up right under it. Still unclear? Ask "but why?" and it
 re-explains one level simpler, as many times as you like. The highlight is the topic; about 40
@@ -197,6 +199,10 @@ nvim --headless -u tests/minimal_init.lua -c 'luafile tests/ask_spec.lua'
 
 Dependencies are loaded with `:packadd`; set `BUTWHY_DEPS` to a directory containing
 `plenary.nvim` and `codecompanion.nvim` to use other copies.
+
+The GIF above is recorded with [VHS](https://github.com/charmbracelet/vhs) from
+`demo/demo.tape` (`vhs demo/demo.tape` from the repository root, with `OPENAI_API_KEY` set), using
+the clean configuration in `demo/init.lua`.
 
 ## License
 
