@@ -101,6 +101,8 @@ require('butwhy').setup {
   -- A floating pop-up is resized to fit its text, wrapping at max_width columns.
   window = { layout = 'float', border = 'rounded', title = ' butwhy ' },
   max_width = 80,
+  -- Keys butwhy maps; `keymaps = false` or `explain = false` maps nothing (:ButwhyExplain still works)
+  keymaps = { explain = '<leader>we' },
 }
 ```
 

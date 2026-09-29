@@ -176,5 +176,19 @@ check("<leader>we runs :ButwhyExplain from visual mode", function()
   eq(vim.fn.exists(":ButwhyExplain"), 2, "command exists")
 end)
 
+check("keymaps = false sets no keymap, but the command still exists", function()
+  pcall(vim.keymap.del, "x", "<leader>we")
+  require("butwhy").setup { keymaps = false }
+  eq(vim.fn.maparg("<leader>we", "x"), "", "rhs")
+  eq(vim.fn.exists(":ButwhyExplain"), 2, "command exists")
+end)
+
+check("keymaps.explain rebinds the explain key", function()
+  pcall(vim.keymap.del, "x", "<leader>we")
+  require("butwhy").setup { keymaps = { explain = "<leader>x" } }
+  eq(vim.fn.maparg("<leader>x", "x"), ":ButwhyExplain<CR>", "rhs")
+  eq(vim.fn.maparg("<leader>we", "x"), "", "default key")
+end)
+
 io.write(string.format("\n%d passed, %d failed\n", passes, failures))
 vim.cmd(failures == 0 and "qa!" or "cq!")

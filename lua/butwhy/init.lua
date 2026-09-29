@@ -12,6 +12,8 @@ local defaults = {
   -- A floating pop-up is resized to fit its text, up to max_width columns.
   window = { layout = 'float', width = 40, height = 1, border = 'rounded', title = ' butwhy ' },
   max_width = 80,
+  -- Keys butwhy maps; false (for all, or one entry) maps nothing. The command works either way.
+  keymaps = { explain = '<leader>we' },
 }
 
 local MIN_WIDTH = 30
@@ -284,7 +286,8 @@ function M.setup(opts)
 
   -- Through `:` rather than a Lua call, so the '< and '> marks are set before the prompt
   -- reads the selection.
-  vim.keymap.set('x', '<leader>we', ':ButwhyExplain<CR>', { silent = true, desc = 'butwhy: explain selection' })
+  local keys = opts.keymaps and vim.tbl_extend('force', defaults.keymaps, opts.keymaps) or {}
+  if keys.explain then vim.keymap.set('x', keys.explain, ':ButwhyExplain<CR>', { silent = true, desc = 'butwhy: explain selection' }) end
 end
 
 return M
