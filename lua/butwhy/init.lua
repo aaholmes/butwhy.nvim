@@ -20,6 +20,8 @@ M.prompt_dir = root .. '/prompts'
 
 -- Mercury (Inception Labs) speaks the OpenAI chat format. Registered only if the user has no
 -- adapter of that name, so the default adapter works without extra configuration.
+-- reasoning_effort defaults to 'instant': the API's own default, 'medium', spends a few seconds
+-- reasoning before the first word, which is too slow for a pop-up.
 local function mercury()
   return require('codecompanion.adapters').extend('openai_compatible', {
     env = {
@@ -27,7 +29,17 @@ local function mercury()
       chat_url = '/v1/chat/completions',
       api_key = 'INCEPTION_API_KEY',
     },
-    schema = { model = { default = 'mercury-2.5' } },
+    schema = {
+      model = { default = 'mercury-2.5' },
+      reasoning_effort = {
+        order = 2,
+        mapping = 'parameters',
+        type = 'enum',
+        desc = 'How long the model reasons before answering',
+        default = 'instant',
+        choices = { 'instant', 'low', 'medium', 'high' },
+      },
+    },
   })
 end
 

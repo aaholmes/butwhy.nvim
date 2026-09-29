@@ -137,6 +137,12 @@ check("built-in mercury adapter uses the Inception endpoint", function()
   eq(adapter.schema.model.default, "mercury-2.5", "model")
 end)
 
+check("built-in mercury adapter sends reasoning_effort = instant", function()
+  local adapter = require("codecompanion.adapters").resolve("mercury")
+  adapter:map_schema_to_params()
+  eq(adapter.parameters.reasoning_effort, "instant", "reasoning_effort")
+end)
+
 check("a user-defined mercury adapter is not replaced", function()
   local cfg = require("codecompanion.config")
   local mine = function() end

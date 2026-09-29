@@ -64,9 +64,8 @@ ignoring parts of long instructions.
 ## Use
 
 Select text in visual mode and press `<leader>we` (or run `:'<,'>ButwhyExplain`). A pop-up
-shows only the answer: a one-sentence explanation, what the highlight means in this particular
-file, a concrete example, and search terms for going deeper. The prompt and your background are
-sent to the model but not shown.
+shows only the answer: a few sentences on what the highlight is and what it does in this
+particular file. The prompt and your background are sent to the model but not shown.
 
 The pop-up is an ordinary CodeCompanion chat, so you can type a follow-up question at the bottom
 and send it with CodeCompanion's usual keys.
@@ -76,7 +75,9 @@ and send it with CodeCompanion's usual keys.
 The default is Mercury 2.5 from Inception Labs, a diffusion language model (it refines many
 tokens in parallel rather than generating one at a time), chosen because it is fast and cheap.
 Set `INCEPTION_API_KEY` to use it; butwhy defines the `mercury` adapter for you unless you
-already have one.
+already have one. That adapter sets Mercury's `reasoning_effort` to `instant`, which skips the
+model's hidden reasoning step; at the API's default (`medium`) the first word takes a few seconds
+to arrive. You can change it from the chat's settings like any other adapter parameter.
 
 To use something else, pass any CodeCompanion adapter:
 
