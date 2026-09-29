@@ -8,9 +8,8 @@ butwhy is built on [CodeCompanion.nvim](https://github.com/olimorris/codecompani
 Neovim plugin that connects chat buffers to large language model (LLM) providers, so it works
 with any model CodeCompanion supports.
 
-**Status:** early. Explaining a highlight works. Planned next: re-explain one level simpler
-(repeatable, to drill down), free-form questions about a highlight, and web search for further
-reading.
+**Status:** early. Explaining a highlight and drilling down to simpler levels work. Planned next:
+free-form questions about a highlight, and web search for further reading.
 
 ## Requirements
 
@@ -68,8 +67,13 @@ opens directly under the selection (or above it, near the bottom of the window),
 text stays highlighted until the pop-up closes, and the pop-up shows only the answer: a few sentences on what the highlight is and what it does in this
 particular file. The prompt and your background are sent to the model but not shown.
 
-The pop-up is an ordinary CodeCompanion chat, so you can type a follow-up question at the bottom
-and send it with CodeCompanion's usual keys.
+Still confused? Press `<leader>ws` in the pop-up (or run `:ButwhySimpler`) to have it re-explained
+one level simpler: less jargon, every term the previous answer relied on defined, and a simpler
+example. Press it again to keep going; the title shows the level, and the pop-up shows only the
+latest answer.
+
+The pop-up is an ordinary CodeCompanion chat, so you can also type a follow-up question at the
+bottom and send it with CodeCompanion's usual keys.
 
 ## Choose a model
 
@@ -101,8 +105,9 @@ require('butwhy').setup {
   -- A floating pop-up is resized to fit its text, wrapping at max_width columns.
   window = { layout = 'float', border = 'rounded', title = ' butwhy ' },
   max_width = 80,
-  -- Keys butwhy maps; `keymaps = false` or `explain = false` maps nothing (:ButwhyExplain still works)
-  keymaps = { explain = '<leader>we' },
+  -- Keys butwhy maps (`simpler` only inside the pop-up); false, for all or one, maps nothing.
+  -- :ButwhyExplain and :ButwhySimpler work either way.
+  keymaps = { explain = '<leader>we', simpler = '<leader>ws' },
 }
 ```
 

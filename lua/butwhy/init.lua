@@ -13,12 +13,20 @@ local defaults = {
   window = { layout = 'float', width = 40, height = 1, border = 'rounded', title = ' butwhy ' },
   max_width = 80,
   -- Keys butwhy maps; false (for all, or one entry) maps nothing. The command works either way.
-  keymaps = { explain = '<leader>we' },
+  keymaps = { explain = '<leader>we', simpler = '<leader>ws' },
 }
+
+-- The drill-down request. The level counter is kept here, not left to the model.
+local SIMPLER = 'Re-explain the HIGHLIGHT at level %d: one layer less jargon than your last answer, '
+  .. 'define every term it relied on, and use a simpler example. Still a few sentences.'
 
 local MIN_WIDTH = 30
 local hl_ns = vim.api.nvim_create_namespace 'butwhy.highlight'
-local anchors = {} -- chat bufnr -> the highlight it explains: { win, buf, first, last, first_col, last_col }
+-- Per pop-up, keyed by chat bufnr: { chat, anchor, level, hide_before }. anchor is the highlight
+-- it explains ({ win, buf, first, last, first_col, last_col }); hide_before is how many leading
+-- buffer lines belong to earlier levels and are hidden.
+local states = {}
+local last_popup -- bufnr of the most recently opened pop-up
 
 local ns = vim.api.nvim_create_namespace 'butwhy.popup'
 
@@ -86,10 +94,12 @@ local function conceal_plumbing(chat)
   local headers = { ['## ' .. roles.user] = true, ['## ' .. llm] = true }
   vim.api.nvim_buf_clear_namespace(chat.bufnr, ns, 0, -1)
   local lines = vim.api.nvim_buf_get_lines(chat.bufnr, 0, -1, false)
+  local st = states[chat.bufnr]
+  local cutoff = st and st.hide_before or 0
   local hide, in_context, prev_hidden = {}, false, true
   for i, line in ipairs(lines) do
     in_context = line == '> Context:' or (in_context and line:match '^> ' ~= nil)
-    hide[i] = headers[vim.trim(line)] or in_context or (prev_hidden and vim.trim(line) == '')
+    hide[i] = i <= cutoff or headers[vim.trim(line)] or in_context or (prev_hidden and vim.trim(line) == '')
     prev_hidden = hide[i]
   end
   -- Trailing blank lines too; blank lines between turns stay as separators.
@@ -148,7 +158,8 @@ end
 local function set_hl() vim.api.nvim_set_hl(0, 'ButwhyHighlight', { link = 'IncSearch', default = true }) end
 
 ---Resize a floating pop-up to its visible text: as wide as the longest line (wrapping at
----max_width) and as tall as the lines it displays, centred in the editor.
+---max_width) and as tall as the lines it displays, placed next to the highlight. The title
+---shows the drill-down level.
 local function fit(chat)
   local win = chat.ui.winnr
   if not (win and vim.api.nvim_win_is_valid(win)) or vim.api.nvim_win_get_config(win).relative == '' then return end
@@ -164,8 +175,11 @@ local function fit(chat)
   -- Set the width first: how many screen lines the text wraps to depends on it.
   vim.api.nvim_win_set_config(win, { width = width, height = 1 })
   local height = math.max(1, math.min(vim.api.nvim_win_text_height(win, {}).all, vim.o.lines - 6))
-  local pos = place(anchors[chat.bufnr], width, height)
-  vim.api.nvim_win_set_config(win, { relative = 'editor', width = width, height = height, row = pos.row, col = pos.col })
+  local st = states[chat.bufnr]
+  local pos = place(st and st.anchor, width, height)
+  local config = { relative = 'editor', width = width, height = height, row = pos.row, col = pos.col }
+  if st and st.level > 0 then config.title = string.format(' butwhy · level %d ', st.level) end
+  vim.api.nvim_win_set_config(win, config)
 end
 
 ---Open a chat in the pop-up window that shows only the model's answers. The prompt is sent as
@@ -203,8 +217,12 @@ local function open_popup(item, context)
     first_col = context.start_col,
     last_col = context.end_col,
   }
-  anchors[chat.bufnr] = anchor
+  states[chat.bufnr] = { chat = chat, anchor = anchor, level = 0, hide_before = 0 }
+  last_popup = chat.bufnr
   show_highlight(anchor)
+  if M.keys.simpler then
+    vim.keymap.set('n', M.keys.simpler, function() M.simpler(chat.bufnr) end, { buffer = chat.bufnr, desc = 'butwhy: explain one level simpler' })
+  end
 
   local pending = false
   local function refresh()
@@ -238,7 +256,7 @@ local function open_popup(item, context)
   vim.api.nvim_create_autocmd('BufWipeout', {
     buffer = chat.bufnr,
     callback = function()
-      anchors[chat.bufnr] = nil
+      states[chat.bufnr] = nil
       pcall(vim.api.nvim_del_augroup_by_id, follow)
     end,
   })
@@ -250,6 +268,22 @@ local function open_popup(item, context)
   chat:add_message({ role = 'user', content = table.concat(user, '\n\n') }, { visible = false })
   chat:submit { auto_submit = true }
   return chat
+end
+
+---Re-explain the highlight one level simpler, in the pop-up whose chat buffer is `bufnr`
+---(default: the current buffer, else the most recent pop-up). The pop-up then shows only the
+---new answer.
+function M.simpler(bufnr)
+  local st = states[bufnr or vim.api.nvim_get_current_buf()] or states[last_popup]
+  if not st then return vim.notify('butwhy: no explanation to simplify', vim.log.levels.WARN) end
+  local chat = st.chat
+  if chat.current_request then return vim.notify('butwhy: still answering', vim.log.levels.INFO) end
+  st.level = st.level + 1
+  st.hide_before = vim.api.nvim_buf_line_count(chat.bufnr)
+  chat:add_message({ role = 'user', content = string.format(SIMPLER, st.level) }, { visible = false })
+  conceal_plumbing(chat)
+  fit(chat)
+  chat:submit { auto_submit = true }
 end
 
 local function run(alias, cmd_opts)
@@ -287,6 +321,8 @@ function M.setup(opts)
   -- Through `:` rather than a Lua call, so the '< and '> marks are set before the prompt
   -- reads the selection.
   local keys = opts.keymaps and vim.tbl_extend('force', defaults.keymaps, opts.keymaps) or {}
+  M.keys = keys -- `simpler` is mapped per pop-up, in the chat buffer
+  vim.api.nvim_create_user_command('ButwhySimpler', function() M.simpler() end, { desc = 'butwhy: explain one level simpler' })
   if keys.explain then vim.keymap.set('x', keys.explain, ':ButwhyExplain<CR>', { silent = true, desc = 'butwhy: explain selection' }) end
 end
 

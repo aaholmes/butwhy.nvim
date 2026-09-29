@@ -9,7 +9,13 @@ vim.o.columns, vim.o.lines = 200, 50
 
 local ANSWER = 'It means MOCK_ANSWER here.'
 local LONG = string.rep('Follow-up answer words ', 12) -- 276 characters on one line
-local server = dofile(root .. '/tests/mock_llm.lua').start { { 'It means ', 'MOCK_ANSWER here.' }, { LONG } }
+local server = dofile(root .. '/tests/mock_llm.lua').start {
+  { 'It means ', 'MOCK_ANSWER here.' },
+  { LONG },
+  { 'Level zero answer.' },
+  { 'Level one answer.' },
+  { 'Level two answer.' },
+}
 
 local config = require 'codecompanion.config'
 config.adapters.http.mock = function()
@@ -220,5 +226,67 @@ check('near the bottom of the window the pop-up opens above the highlight', func
   local top = highlight_rows(199, 200)
   eq(cfg.row + cfg.height + 2, top, 'bottom border row + 1 vs the highlight top row')
 end)
+
+-- Drill-down, on the pop-up opened by the previous check (lines 199-200).
+local drill = require('codecompanion').last_chat()
+
+local function press_simpler()
+  vim.api.nvim_set_current_win(drill.ui.winnr)
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<leader>ws', true, false, true), 'x', false)
+end
+
+local function title_of(w)
+  local t = vim.api.nvim_win_get_config(w).title
+  return type(t) == 'table' and t[1][1] or tostring(t)
+end
+
+check('<leader>ws asks for the next level, hidden from the pop-up', function()
+  press_simpler()
+  vim.wait(5000, function() return done >= 4 end, 20)
+  vim.wait(200)
+  eq(#server.requests, 4, 'requests sent')
+  local msgs = server.requests[4].messages
+  eq(msgs[#msgs].role, 'user', 'last role')
+  assert(msgs[#msgs].content:find('level 1', 1, true), 'level missing: ' .. msgs[#msgs].content)
+  local ns = vim.api.nvim_create_namespace 'butwhy.popup'
+  local hidden = {}
+  for _, m in ipairs(vim.api.nvim_buf_get_extmarks(drill.bufnr, ns, 0, -1, { details = true })) do
+    hidden[m[2]] = true
+  end
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(drill.bufnr, 0, -1, false)) do
+    assert(not (l:find('level 1', 1, true) and not hidden[i - 1]), 'drill-down request visible: ' .. l)
+  end
+end)
+
+-- Visible lines of the drill-down pop-up.
+local function drill_visible()
+  local ns = vim.api.nvim_create_namespace 'butwhy.popup'
+  local hidden, shown = {}, {}
+  for _, m in ipairs(vim.api.nvim_buf_get_extmarks(drill.bufnr, ns, 0, -1, { details = true })) do
+    hidden[m[2]] = true
+  end
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(drill.bufnr, 0, -1, false)) do
+    if not hidden[i - 1] and vim.trim(l) ~= '' then table.insert(shown, l) end
+  end
+  return shown
+end
+
+check('the pop-up shows only the simpler answer, and the title shows the level', function()
+  eq(table.concat(drill_visible(), '\n'), 'Level one answer.', 'visible text')
+  assert(title_of(drill.ui.winnr):find('level 1', 1, true), 'title = ' .. title_of(drill.ui.winnr))
+  eq(vim.api.nvim_win_get_config(drill.ui.winnr).height, vim.api.nvim_win_text_height(drill.ui.winnr, {}).all, 'height')
+end)
+
+check('pressing again goes one level further', function()
+  press_simpler()
+  vim.wait(5000, function() return done >= 5 end, 20)
+  vim.wait(200)
+  local msgs = server.requests[5].messages
+  assert(msgs[#msgs].content:find('level 2', 1, true), 'level missing: ' .. msgs[#msgs].content)
+  eq(table.concat(drill_visible(), '\n'), 'Level two answer.', 'visible text')
+  assert(title_of(drill.ui.winnr):find('level 2', 1, true), 'title = ' .. title_of(drill.ui.winnr))
+end)
+
+check(':ButwhySimpler exists for users without the keymap', function() eq(vim.fn.exists(':ButwhySimpler'), 2, 'command') end)
 
 h.finish()
