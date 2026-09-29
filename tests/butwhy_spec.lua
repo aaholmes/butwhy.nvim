@@ -89,9 +89,19 @@ check('rules group butwhy points at the configured background and is not autoloa
   assert(not vim.tbl_contains(autoload, 'butwhy'), 'butwhy must not be autoloaded')
 end)
 
-check('default adapter is Gemma 4 31B on Ollama Cloud', function()
-  eq(require('butwhy').adapter.name, 'ollama_cloud', 'adapter')
-  eq(require('butwhy').adapter.model, 'gemma4:31b', 'model')
+check('default adapter is GPT-6 Luna', function()
+  eq(require('butwhy').adapter.name, 'openai_luna', 'adapter')
+  eq(require('butwhy').adapter.model, 'gpt-6-luna', 'model')
+end)
+
+check('built-in openai_luna adapter uses the OpenAI endpoint with reasoning off', function()
+  local adapter = assert(require('codecompanion.adapters').resolve 'openai_luna', 'openai_luna adapter missing')
+  eq(adapter.env.url, 'https://api.openai.com', 'url')
+  eq(adapter.env.chat_url, '/v1/chat/completions', 'chat_url')
+  eq(adapter.env.api_key, 'OPENAI_API_KEY', 'api_key env var')
+  eq(adapter.schema.model.default, 'gpt-6-luna', 'model')
+  adapter:map_schema_to_params()
+  eq(adapter.parameters.reasoning_effort, 'none', 'reasoning_effort')
 end)
 
 check('built-in ollama_cloud adapter uses the Ollama Cloud endpoint', function()
@@ -116,7 +126,7 @@ check('built-in mercury adapter sends reasoning_effort = instant', function()
   eq(adapter.parameters.reasoning_effort, 'instant', 'reasoning_effort')
 end)
 
-for _, name in ipairs { 'mercury', 'ollama_cloud' } do
+for _, name in ipairs { 'mercury', 'ollama_cloud', 'openai_luna' } do
   check('a user-defined ' .. name .. ' adapter is not replaced', function()
     local cfg = require 'codecompanion.config'
     local mine = function() end

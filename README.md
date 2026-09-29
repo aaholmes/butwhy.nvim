@@ -81,40 +81,42 @@ the bottom.
 
 ## Choose a model
 
-The default is Gemma 4 31B on Ollama Cloud, which has a free plan: create a key at ollama.com and
-set `OLLAMA_API_KEY`. butwhy defines the `ollama_cloud` adapter for you unless you already have
-one. The comparison below explains the choice.
+The default is GPT-6 Luna from OpenAI with reasoning turned off, the most accurate model in the
+comparison below, at about 1.5 seconds per answer and roughly $0.03 per 100 explanations. Set
+`OPENAI_API_KEY`; butwhy defines the `openai_luna` adapter for you unless you already have one.
+OpenAI's API does not train on your inputs by default, but keeps them for up to 30 days for
+abuse monitoring.
 
-butwhy also defines a `mercury` adapter for Mercury 2.5 from Inception Labs, a diffusion language
-model (it refines many tokens in parallel rather than generating one at a time) and the fastest
-option tested. Set `INCEPTION_API_KEY` and pass `adapter = 'mercury'` to use it. That adapter sets
-Mercury's `reasoning_effort` to `instant`, which skips the model's hidden reasoning step; at the
-API's default (`medium`) the first word takes a few seconds to arrive.
+butwhy also defines two alternatives, each registered only if you have no adapter of that name:
+
+- `ollama_cloud`: Gemma 4 31B on Ollama Cloud, which has a free plan and states that prompts are
+  not logged or used for training. Set `OLLAMA_API_KEY` and pass `adapter = 'ollama_cloud'`.
+- `mercury`: Mercury 2.5 from Inception Labs, a diffusion language model (it refines many tokens
+  in parallel rather than generating one at a time) and the fastest option tested. Set
+  `INCEPTION_API_KEY` and pass `adapter = 'mercury'`. The adapter sets `reasoning_effort` to
+  `instant`; at the API's default (`medium`) the first word takes a few seconds to arrive.
 
 To use something else, pass any CodeCompanion adapter:
 
 ```lua
-require('butwhy').setup { adapter = { name = 'anthropic', model = 'claude-haiku-4-5-20251001' } }
-require('butwhy').setup { adapter = 'ollama' } -- that adapter's default model
-require('butwhy').setup { adapter = false }    -- CodeCompanion's configured chat adapter
+require('butwhy').setup { adapter = 'ollama_cloud' } -- a name, using that adapter's default model
+require('butwhy').setup { adapter = { name = 'anthropic', model = 'claude-haiku-4-5' } }
+require('butwhy').setup { adapter = false }           -- CodeCompanion's configured chat adapter
 ```
 
-You can also switch adapter inside any open chat with CodeCompanion's own keymap (press `?` in
-the chat to list them).
+Models on Baseten, Groq, OpenRouter and similar hosts use the OpenAI-compatible format: define an
+adapter by extending `openai_compatible` with the host's URL, key variable and model name, as
+butwhy's own adapters do in `lua/butwhy/init.lua`. You can also switch adapter inside any open
+chat with CodeCompanion's own keymap (press `?` in the chat to list them).
 
 ### Recommended models
 
-- **Free (the default):** Gemma 4 31B on Ollama Cloud's free plan. It was about as accurate as
-  the best models tested, the most consistent at making each "simpler" step genuinely simpler,
-  and answered in about a second. Ollama states that cloud prompts are not logged or used for
-  training.
-- **Most accurate tested:** Kimi K3 or DeepSeek V4 Pro on Baseten, both with reasoning turned off.
-  DeepSeek costs less than half as much per token.
-- **Fastest and cheapest:** Mercury 2.5 (`adapter = 'mercury'`), at the cost of lower accuracy.
-
-Models on Baseten, Groq and similar hosts use the same OpenAI-compatible format; define an
-adapter by extending `openai_compatible` with the host's URL, key variable and model name, as
-butwhy's own `ollama_cloud` adapter does in `lua/butwhy/init.lua`.
+- **Most accurate (the default):** GPT-6 Luna, with reasoning off.
+- **Free:** Gemma 4 31B on Ollama Cloud's free plan. It is also the best candidate for running on
+  your own machine, though at 4-bit it needs more than 16 GB of GPU memory.
+- **Close second, open weights:** Kimi K3 on Baseten, with reasoning off; it costs about 30 times
+  as much per token as Luna.
+- **Fastest and cheapest:** Mercury 2.5, at the cost of lower accuracy.
 
 ### Model comparison
 
@@ -122,33 +124,43 @@ Each model explained 13 highlights at four levels (the first answer plus three "
 steps): Python, Rust and C code, a GPU kernel, LaTeX equations, a Markdown design note, and two
 Wikipedia passages outside the reader's field (property law and immunology). A separate model
 graded every answer using a written reference answer, without knowing which model produced it.
-All models ran with reasoning off, or at its lowest setting where it cannot be turned off, so
-none was spending extra time thinking. Tested September 2026.
+All models ran with reasoning off, or at the lowest setting where it cannot be turned off, so
+none was spending extra time thinking. Grading was done in three passes; models graded in more
+than one pass show the average. Tested September 2026.
 
-| Model (provider) | Answers fully correct | First answer correct | Steps judged simpler | Median time | Price per 1M tokens (input / output) |
+| Model (provider) | Answers fully correct (of 52) | First answer correct (of 13) | Steps judged simpler | Median time | Price per 1M tokens (input / output) |
 |---|---|---|---|---|---|
-| Kimi K3 (Baseten) | 75% (39/52) | 10/13 | 67% | 1.5 s | $3.00 / $15.00 |
-| DeepSeek V4 Pro (Baseten) | 67% (35/52) | 7/13 | 72% | 1.2 s | $1.32 / $3.96 |
-| Gemma 4 31B (Ollama Cloud) | 62% (32/52) | 9/13 | 85% | 1.0 s | free plan; $0.14 / $0.40 after |
-| Mercury 2.5, `instant` (Inception) | 46% (24/52) | 5/13 | 54% | 0.9 s | $0.04 / $0.15 (launch price) |
-| Nemotron 3 Ultra (Ollama Cloud) | 44% (23/52) | 3/13 | 74% | 14 s | free plan |
-| Qwen 3.8 27B (Groq) | 42% (22/52) | 4/13 | 79% | 0.6 s | free plan |
-| Mercury 2.5, `low` (Inception) | 40% (21/52) | 7/13 | 46% | 1.3 s | $0.04 / $0.15 (launch price) |
-| gpt-oss-120b, low reasoning (Groq) | 29% (15/52) | 3/13 | 54% | 1.2 s | free plan |
+| GPT-6 Luna (OpenAI) | 86% | 12 | 79% | 1.6 s | $0.10 / $0.50 |
+| Kimi K3 (Baseten) | 77% | 9.7 | 72% | 1.5 s | $3.00 / $15.00 |
+| DeepSeek V4 Pro (Baseten) | 67% | 7 | 72% | 1.2 s | $1.32 / $3.96 |
+| Gemma 4 31B (Ollama Cloud) | 65% | 8.3 | 81% | 1.0 s | free plan; $0.14 / $0.40 after |
+| Muse Glimmer 30B, minimal reasoning (OpenRouter) | 52% | 6 | 44% | 5.5 s | $0.30 / $1.20 |
+| Claude Haiku 4.5 (Anthropic) | 50% | 7 | 87% | 2.0 s | $1.00 / $5.00 |
+| Gemma 4 26B-A4B (OpenRouter) | 50% | 7 | 31% | 2.1 s | $0.09 / $0.30 |
+| Mercury 2.5, `instant` (Inception) | 46% | 5.7 | 56% | 0.9 s | $0.04 / $0.15 (launch price) |
+| Nemotron 3 Ultra (Ollama Cloud) | 44% | 3 | 74% | 14 s | free plan |
+| Qwen 3.8 27B (Groq) | 42% | 4 | 79% | 0.6 s | free plan |
+| Qwen 3.6 35B-A3B (OpenRouter) | 42% | 5 | 54% | 1.1 s | $0.15 / $1.00 |
+| gpt-oss-20b, low reasoning (Ollama Cloud) | 40% | 6 | 31% | 3.1 s | free plan |
+| Mercury 2.5, `low` (Inception) | 38% | 6 | 52% | 1.2 s | $0.04 / $0.15 (launch price) |
+| gpt-oss-120b, low reasoning (Groq) | 29% | 3 | 54% | 1.2 s | free plan |
+| Nemotron 3 Nano 30B (Ollama Cloud) | 8% | 2 | 28% | 5.0 s | free plan |
 
 Read the table with its limits in mind. Each model gave one answer per highlight, and 13
-highlights is a small set: only gaps of roughly 25 to 30 percentage points are larger than the
-noise, so the top three are not distinguishable from each other. The grader was itself a
+highlights is a small set: only gaps of roughly 15 to 30 percentage points, depending on the
+pair, are larger than the noise. GPT-6 Luna's lead over Gemma 4 31B held in both grading passes
+that included them; its lead over Kimi K3 did not. Models graded in several passes scored
+within about 4 percentage points of their own average each time. The grader was itself a
 language model. One highlight, a piece of collision-avoidance geometry, was answered wrongly or
-imprecisely by every model. Gemini 3.5 Flash-Lite and Cohere North-mini-code were tested on too
-few highlights to include.
+imprecisely by nearly every model. Times are for each provider's service on the day, including
+queueing on free plans.
 
 ## Options
 
 ```lua
 require('butwhy').setup {
   background = '~/.config/butwhy/background.md',
-  adapter = { name = 'ollama_cloud', model = 'gemma4:31b' },
+  adapter = { name = 'openai_luna', model = 'gpt-6-luna' },
   -- Pop-up window; takes any CodeCompanion chat window option, and affects butwhy chats only.
   -- A floating pop-up is resized to fit its text, wrapping at max_width columns.
   window = { layout = 'float', border = 'rounded', title = ' butwhy ' },
