@@ -1,7 +1,8 @@
 -- A fake OpenAI-compatible chat endpoint running inside Neovim's event loop, so tests can
 -- drive a real CodeCompanion chat end to end without a network or an API key.
 -- start(chunks) returns { port, requests }: each POST's decoded JSON body is appended to
--- `requests` and answered by streaming `chunks` as the assistant's reply; GET (the model list)
+-- `requests` and answered by streaming `chunks` as the assistant's reply (or chunks[n] for the
+-- nth request, if chunks is a list of lists); GET (the model list)
 -- returns one model, `mock-model`.
 local M = {}
 
@@ -43,8 +44,10 @@ function M.start(chunks)
         local reply = 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ' .. #json .. '\r\nConnection: close\r\n\r\n' .. json
         return client:write(reply, function() client:close() end)
       end
+      state.count = (state.count or 0) + 1
+      local reply = type(chunks[1]) == 'table' and (chunks[state.count] or chunks[#chunks]) or chunks
       vim.schedule(function() table.insert(state.requests, vim.json.decode(body)) end)
-      client:write(sse(chunks), function() client:close() end)
+      client:write(sse(reply), function() client:close() end)
     end)
   end)
   state.port = server:getsockname().port

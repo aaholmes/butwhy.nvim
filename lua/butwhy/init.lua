@@ -9,8 +9,12 @@ local defaults = {
   -- chat adapter configured in CodeCompanion.
   adapter = { name = 'mercury', model = 'mercury-2.5' },
   -- The answer pop-up: any CodeCompanion chat window options, applied to butwhy chats only.
-  window = { layout = 'float', width = 0.6, height = 0.6, border = 'rounded', title = ' butwhy ' },
+  -- A floating pop-up is resized to fit its text, up to max_width columns.
+  window = { layout = 'float', width = 40, height = 1, border = 'rounded', title = ' butwhy ' },
+  max_width = 80,
 }
+
+local MIN_WIDTH = 30
 
 local ns = vim.api.nvim_create_namespace 'butwhy.popup'
 
@@ -77,13 +81,54 @@ local function conceal_plumbing(chat)
   local llm = type(roles.llm) == 'function' and roles.llm(chat.adapter) or roles.llm
   local headers = { ['## ' .. roles.user] = true, ['## ' .. llm] = true }
   vim.api.nvim_buf_clear_namespace(chat.bufnr, ns, 0, -1)
-  local in_context, prev_hidden = false, true
-  for i, line in ipairs(vim.api.nvim_buf_get_lines(chat.bufnr, 0, -1, false)) do
+  local lines = vim.api.nvim_buf_get_lines(chat.bufnr, 0, -1, false)
+  local hide, in_context, prev_hidden = {}, false, true
+  for i, line in ipairs(lines) do
     in_context = line == '> Context:' or (in_context and line:match '^> ' ~= nil)
-    local hide = headers[vim.trim(line)] or in_context or (prev_hidden and vim.trim(line) == '')
-    if hide then vim.api.nvim_buf_set_extmark(chat.bufnr, ns, i - 1, 0, { conceal_lines = '' }) end
-    prev_hidden = hide
+    hide[i] = headers[vim.trim(line)] or in_context or (prev_hidden and vim.trim(line) == '')
+    prev_hidden = hide[i]
   end
+  -- Trailing blank lines too; blank lines between turns stay as separators.
+  for i = #lines, 1, -1 do
+    if not (hide[i] or vim.trim(lines[i]) == '') then break end
+    hide[i] = true
+  end
+  for i = 1, #lines do
+    if hide[i] then vim.api.nvim_buf_set_extmark(chat.bufnr, ns, i - 1, 0, { conceal_lines = '' }) end
+  end
+end
+
+---Hide the gutter (line numbers, signs, folds) and enable line concealing in the pop-up.
+local function style(win)
+  local wo = vim.wo[win]
+  wo.number, wo.relativenumber, wo.signcolumn, wo.foldcolumn, wo.statuscolumn = false, false, 'no', '0', ''
+  wo.conceallevel = 2
+end
+
+---Resize a floating pop-up to its visible text: as wide as the longest line (wrapping at
+---max_width) and as tall as the lines it displays, centred in the editor.
+local function fit(chat)
+  local win = chat.ui.winnr
+  if not (win and vim.api.nvim_win_is_valid(win)) or vim.api.nvim_win_get_config(win).relative == '' then return end
+  local hidden = {}
+  for _, m in ipairs(vim.api.nvim_buf_get_extmarks(chat.bufnr, ns, 0, -1, { details = true })) do
+    if m[4].conceal_lines then hidden[m[2]] = true end
+  end
+  local longest = 0
+  for i, line in ipairs(vim.api.nvim_buf_get_lines(chat.bufnr, 0, -1, false)) do
+    if not hidden[i - 1] then longest = math.max(longest, vim.fn.strdisplaywidth(line)) end
+  end
+  local width = math.max(MIN_WIDTH, math.min(longest + 1, M.max_width, vim.o.columns - 4))
+  -- Set the width first: how many screen lines the text wraps to depends on it.
+  vim.api.nvim_win_set_config(win, { width = width, height = 1 })
+  local height = math.max(1, math.min(vim.api.nvim_win_text_height(win, {}).all, vim.o.lines - 6))
+  vim.api.nvim_win_set_config(win, {
+    relative = 'editor',
+    width = width,
+    height = height,
+    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1),
+    col = math.floor((vim.o.columns - width) / 2),
+  })
 end
 
 ---Open a chat in the pop-up window that shows only the model's answers. The prompt is sent as
@@ -113,19 +158,33 @@ local function open_popup(item, context)
   }
   if not chat then return end
 
-  vim.wo[chat.ui.winnr].conceallevel = 2
   local pending = false
-  vim.api.nvim_buf_attach(chat.bufnr, false, {
-    on_lines = function()
-      if pending then return end
-      pending = true
+  local function refresh()
+    if pending then return end
+    pending = true
+    vim.schedule(function()
+      pending = false
+      if not vim.api.nvim_buf_is_valid(chat.bufnr) then return end
+      conceal_plumbing(chat)
+      fit(chat)
+    end)
+  end
+  vim.api.nvim_buf_attach(chat.bufnr, false, { on_lines = refresh })
+  -- The cursor's line is shown even when concealed, so moving it can change the height.
+  vim.api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI' }, { buffer = chat.bufnr, callback = refresh })
+  -- CodeCompanion opens a new window each time the chat is shown again.
+  vim.api.nvim_create_autocmd('BufWinEnter', {
+    buffer = chat.bufnr,
+    callback = function()
       vim.schedule(function()
-        pending = false
-        if vim.api.nvim_buf_is_valid(chat.bufnr) then conceal_plumbing(chat) end
+        if chat.ui.winnr and vim.api.nvim_win_is_valid(chat.ui.winnr) then style(chat.ui.winnr) end
+        refresh()
       end)
     end,
   })
+  style(chat.ui.winnr)
   conceal_plumbing(chat)
+  fit(chat)
 
   -- Added after creation so the background (attached when the chat is created) precedes it.
   chat:add_message({ role = 'user', content = table.concat(user, '\n\n') }, { visible = false })
@@ -147,6 +206,7 @@ function M.setup(opts)
   local adapter = opts.adapter
   M.adapter = type(adapter) == 'string' and { name = adapter } or adapter or nil
   M.window = opts.window
+  M.max_width = opts.max_width
 
   if config.adapters.http.mercury == nil then config.adapters.http.mercury = mercury end
 

@@ -4,8 +4,12 @@ local root = vim.fs.dirname(vim.fs.dirname(vim.fs.normalize(vim.fn.fnamemodify(d
 local h = dofile(root .. '/tests/harness.lua')
 local check, eq = h.check, h.eq
 
+-- A wide editor, so a pop-up sized to the editor and one sized to its text are easy to tell apart.
+vim.o.columns, vim.o.lines = 200, 50
+
 local ANSWER = 'It means MOCK_ANSWER here.'
-local server = dofile(root .. '/tests/mock_llm.lua').start { 'It means ', 'MOCK_ANSWER here.' }
+local LONG = string.rep('Follow-up answer words ', 12) -- 276 characters on one line
+local server = dofile(root .. '/tests/mock_llm.lua').start { { 'It means ', 'MOCK_ANSWER here.' }, { LONG } }
 
 local config = require 'codecompanion.config'
 config.adapters.http.mock = function()
@@ -81,6 +85,19 @@ check('the answer is the first line shown, with no run of blank lines', function
   assert(not shown:find('\n\n\n', 1, true), 'run of blank lines in:\n' .. shown)
 end)
 
+check('the pop-up has no line numbers or sign column', function()
+  eq(vim.wo[win].number, false, 'number')
+  eq(vim.wo[win].relativenumber, false, 'relativenumber')
+  eq(vim.wo[win].signcolumn, 'no', 'signcolumn')
+end)
+
+check('the pop-up is sized to a short answer', function()
+  local cfg = vim.api.nvim_win_get_config(win)
+  assert(cfg.width <= 40, 'width ' .. cfg.width .. ' for a ' .. #ANSWER .. '-character answer')
+  eq(cfg.height, vim.api.nvim_win_text_height(win, {}).all, 'height vs displayed lines')
+  assert(cfg.height <= 2, 'height ' .. cfg.height)
+end)
+
 check('chat role headers are concealed', function()
   local ns = vim.api.nvim_create_namespace 'butwhy.popup'
   local concealed = {}
@@ -126,6 +143,23 @@ check('a follow-up typed in the pop-up reaches the model with the conversation',
     if m.role == 'assistant' and tostring(m.content):find('MOCK_ANSWER', 1, true) then seen_answer = true end
   end
   assert(seen_answer, 'previous answer not sent back')
+end)
+
+check('a long answer wraps at 80 columns and the height follows', function()
+  vim.wait(200) -- let the scheduled refit after the last streamed chunk run
+  local cfg = vim.api.nvim_win_get_config(win)
+  eq(cfg.width, 80, 'width')
+  eq(cfg.height, vim.api.nvim_win_text_height(win, {}).all, 'height vs displayed lines')
+  assert(cfg.height >= 5, 'height ' .. cfg.height .. ' too small for the question plus a wrapped answer')
+end)
+
+check('reopening the pop-up keeps its style and size', function()
+  chat.ui:hide()
+  chat.ui:open()
+  vim.wait(200)
+  local w = chat.ui.winnr
+  eq(vim.wo[w].number, false, 'number after reopen')
+  eq(vim.api.nvim_win_get_config(w).height, vim.api.nvim_win_text_height(w, {}).all, 'height after reopen')
 end)
 
 h.finish()

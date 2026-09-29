@@ -96,8 +96,10 @@ the chat to list them).
 require('butwhy').setup {
   background = '~/.config/butwhy/background.md',
   adapter = { name = 'mercury', model = 'mercury-2.5' },
-  -- Pop-up window; takes any CodeCompanion chat window option, and affects butwhy chats only
-  window = { layout = 'float', width = 0.6, height = 0.6, border = 'rounded', title = ' butwhy ' },
+  -- Pop-up window; takes any CodeCompanion chat window option, and affects butwhy chats only.
+  -- A floating pop-up is resized to fit its text, wrapping at max_width columns.
+  window = { layout = 'float', border = 'rounded', title = ' butwhy ' },
+  max_width = 80,
 }
 ```
 
