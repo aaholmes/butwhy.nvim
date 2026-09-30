@@ -78,6 +78,24 @@ check('the pop-up opens right under the highlight', function()
   eq(cfg.col, vim.fn.screenpos(source_win, 100, 1).col - 1, 'left edge vs the text column')
 end)
 
+check('the pop-up opens below virtual lines under the highlight (a rendered equation)', function()
+  -- snacks.nvim draws a display equation's extra rows as virtual lines under its line.
+  local fake = vim.api.nvim_create_namespace 'butwhy_test_source_virt'
+  local src = vim.api.nvim_win_get_buf(source_win)
+  vim.api.nvim_buf_set_extmark(src, fake, 100, 0, { virt_lines = { { { 'row 2' } }, { { 'row 3' } } } })
+  vim.cmd.redraw()
+  vim.api.nvim_exec_autocmds('VimResized', {})
+  vim.wait(200)
+  local row = vim.api.nvim_win_get_config(win).row
+  vim.api.nvim_buf_clear_namespace(src, fake, 0, -1)
+  vim.cmd.redraw()
+  vim.api.nvim_exec_autocmds('VimResized', {})
+  vim.wait(200)
+  local _, bottom = highlight_rows(100, 101)
+  eq(row, bottom + 1 + 2, 'border row vs the row after the two virtual lines')
+  eq(vim.api.nvim_win_get_config(win).row, bottom + 1, 'border row once they are gone')
+end)
+
 local hl_ns = vim.api.nvim_create_namespace 'butwhy.highlight'
 local function highlight_marks()
   return vim.api.nvim_buf_get_extmarks(vim.api.nvim_win_get_buf(source_win), hl_ns, 0, -1, { details = true })
@@ -142,6 +160,63 @@ check('the pop-up is sized to a short answer', function()
   assert(cfg.width <= 40, 'width ' .. cfg.width .. ' for a ' .. #ANSWER .. '-character answer')
   eq(cfg.height, vim.api.nvim_win_text_height(win, {}).all, 'height vs displayed lines')
   assert(cfg.height <= 2, 'height ' .. cfg.height)
+end)
+
+check('virtual lines added by another plugin (a rendered equation) resize the pop-up', function()
+  -- snacks.nvim draws a display equation as an image in virtual lines below its line, without
+  -- changing the buffer; the pop-up must grow and keep the answer in view.
+  local fake = vim.api.nvim_create_namespace 'butwhy_test_virt_lines'
+  local before = vim.api.nvim_win_get_config(win).height
+  local rows = {}
+  for i = 1, 4 do
+    rows[i] = { { 'image row ' .. i, 'Normal' } }
+  end
+  local row
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(chat.bufnr, 0, -1, false)) do
+    if l:find(ANSWER, 1, true) then row = i - 1 end
+  end
+  vim.api.nvim_buf_set_extmark(chat.bufnr, fake, row, 0, { virt_lines = rows })
+  vim.cmd.redraw()
+  vim.wait(300)
+  vim.cmd.redraw()
+  local cfg = vim.api.nvim_win_get_config(win)
+  local grown = cfg.height
+  local topline = vim.fn.getwininfo(win)[1].topline
+  vim.api.nvim_buf_clear_namespace(chat.bufnr, fake, 0, -1)
+  vim.cmd.redraw()
+  vim.wait(300)
+  eq(grown, before + 4, 'height with four virtual lines')
+  eq(topline, 1, 'topline with four virtual lines')
+  eq(vim.api.nvim_win_get_config(win).height, before, 'height after they are removed')
+end)
+
+check('an answer taller than the editor fills the pop-up down to its last line', function()
+  -- Too tall to fit, the view must end at the last line (where the cursor is) with no empty
+  -- rows below it, not show that line at the top and the rest of the window empty.
+  local fake = vim.api.nvim_create_namespace 'butwhy_test_virt_lines'
+  local rows = {}
+  for i = 1, 60 do
+    rows[i] = { { 'image row ' .. i, 'Normal' } }
+  end
+  local row
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(chat.bufnr, 0, -1, false)) do
+    if l:find(ANSWER, 1, true) then row = i - 1 end
+  end
+  vim.api.nvim_buf_set_extmark(chat.bufnr, fake, row, 0, { virt_lines = rows })
+  vim.cmd.redraw()
+  vim.wait(300)
+  vim.cmd.redraw()
+  local height = vim.api.nvim_win_get_height(win)
+  local info = vim.fn.getwininfo(win)[1]
+  local shown = vim.api.nvim_win_text_height(win, { start_row = info.topline - 1 }).all
+  local last = vim.api.nvim_buf_line_count(chat.bufnr)
+  vim.api.nvim_buf_clear_namespace(chat.bufnr, fake, 0, -1)
+  vim.cmd.redraw()
+  vim.wait(300)
+  eq(height, vim.o.lines - 6, 'height capped by the editor')
+  eq(info.botline, last, 'last line shown')
+  assert(shown >= height, string.format('only %d of %d rows filled from topline %d', shown, height, info.topline))
+  eq(vim.fn.getwininfo(win)[1].topline, 1, 'topline once it fits again')
 end)
 
 check('chat role headers are concealed', function()

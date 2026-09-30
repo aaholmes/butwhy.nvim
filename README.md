@@ -7,6 +7,13 @@ explained at your level in a small pop-up right under it. Still unclear? Ask "bu
 re-explains one level simpler, as many times as you like. The highlight is the topic; about 40
 lines on either side are sent as context only, so the answer stays on what you selected.
 
+![Selecting the Gaussian integral, asking "Derive this" with <leader>wa, and getting a derivation whose equations are drawn as typeset images](docs/latex.gif)
+
+Answers write maths as LaTeX. Neovim shows it as source unless something renders it; above, it
+is typeset by [snacks.nvim](https://github.com/folke/snacks.nvim), a plugin that draws images in
+terminals that support them. See [LaTeX rendering](#latex-rendering), or set `math = 'plain'` for
+Unicode maths that reads well anywhere.
+
 butwhy is built on [CodeCompanion.nvim](https://github.com/olimorris/codecompanion.nvim), a
 Neovim plugin that connects chat buffers to large language model (LLM) providers, so it works
 with any model CodeCompanion supports.
@@ -87,6 +94,22 @@ Either pop-up is an ordinary CodeCompanion chat, so you can keep typing follow-u
 the bottom. The model answering is shown in the pop-up's bottom border. Press `q` or `<Esc>` in
 Normal mode to close it (in butwhy pop-ups these replace CodeCompanion's `q`, which stops an
 answer mid-stream).
+
+### LaTeX rendering
+
+butwhy only asks for LaTeX; drawing it is up to your setup. The GIF above uses:
+
+- a terminal that can show images through kitty's graphics protocol (kitty, Ghostty or WezTerm);
+  inside tmux, set `allow-passthrough on`
+- snacks.nvim with its image module enabled, which typesets each `$...$` with pdflatex or
+  tectonic and converts it to an image with ImageMagick
+- the treesitter `latex`, `markdown` and `markdown_inline` parsers
+
+By default snacks.nvim scales each inline equation to fill a row, so a lone $c$ comes out much
+larger than $N(s)$, and it compiles with tectonic before pdflatex. `demo/latex_init.lua` shows
+settings that draw all inline equations at one size and prefer pdflatex (about 0.13 s per
+equation instead of 0.4 s; its template needs the `standalone`, `preview` and `varwidth` LaTeX
+packages).
 
 ## Choose a model
 
@@ -214,9 +237,11 @@ nvim --headless -u tests/minimal_init.lua -c 'luafile tests/ask_spec.lua'
 Dependencies are loaded with `:packadd`; set `BUTWHY_DEPS` to a directory containing
 `plenary.nvim` and `codecompanion.nvim` to use other copies.
 
-The GIF above is recorded with [VHS](https://github.com/charmbracelet/vhs) from
+The first GIF above is recorded with [VHS](https://github.com/charmbracelet/vhs) from
 `demo/demo.tape` (`vhs demo/demo.tape` from the repository root, with `OPENAI_API_KEY` set), using
-the clean configuration in `demo/init.lua`.
+the clean configuration in `demo/init.lua`. VHS cannot show terminal images, so the LaTeX GIF is a
+screen recording of kitty: `demo/record_latex.sh` plays the keystrokes using
+`demo/latex_init.lua`, and `demo/to_gif.sh` trims and converts the recording.
 
 ## License
 

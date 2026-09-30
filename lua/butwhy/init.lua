@@ -166,6 +166,15 @@ local function place(a, width, height)
   local top = vim.fn.screenpos(a.win, a.first, 1)
   local bottom = vim.fn.screenpos(a.win, a.last, math.max(1, #last_text))
   if top.row == 0 or bottom.row == 0 then return centred end
+  -- screenpos() leaves out virtual lines under the highlight, where snacks.nvim draws the lower
+  -- rows of a rendered equation; open below them instead of over them.
+  -- Neovim counts them as filler above the next line.
+  if a.last < vim.api.nvim_buf_line_count(a.buf) then
+    bottom.row = bottom.row + vim.api.nvim_win_text_height(a.win, { start_row = a.last, end_row = a.last }).fill
+  else
+    local own = vim.api.nvim_win_text_height(a.win, { start_row = a.last - 1, end_row = a.last - 1 }).all
+    bottom.row = bottom.row + vim.api.nvim_win_text_height(a.win, { start_row = a.last - 1 }).all - own
+  end
   local col = math.max(0, math.min(top.col - 1, vim.o.columns - width - 2))
   local fits_below = bottom.row + height + 2 <= vim.o.lines - vim.o.cmdheight
   local fits_above = top.row - 1 >= height + 2
@@ -225,9 +234,44 @@ local function fit(chat)
   if model then config.footer, config.footer_pos = ' ' .. model .. ' ', 'right' end
   vim.api.nvim_win_set_config(win, config)
   -- With the cursor on the chat's last line, Neovim scrolls that line to the top and the answer
-  -- above it drops out of view. When everything fits, show it from the first line.
-  if needed <= height then vim.api.nvim_win_call(win, function() vim.fn.winrestview { topline = 1 } end) end
+  -- above it drops out of view. When everything fits, show it from the first line; when it does
+  -- not, end the view at that last line, so the window is full rather than mostly empty.
+  if needed <= height then
+    vim.api.nvim_win_call(win, function() vim.fn.winrestview { topline = 1 } end)
+  elseif vim.api.nvim_win_get_cursor(win)[1] == vim.api.nvim_buf_line_count(chat.bufnr) then
+    vim.api.nvim_win_call(win, function() vim.cmd 'normal! zb' end)
+  end
 end
+
+-- Other plugins can change how tall the text is without changing the buffer: snacks.nvim draws a
+-- rendered equation as an image in virtual lines, which triggers neither on_lines nor WinScrolled,
+-- so the answer grew past the window and scrolled out of view. After each redraw of a pop-up,
+-- check its height and refit if it no longer matches.
+local checking = {}
+local function check_fit(bufnr)
+  local st = states[bufnr]
+  local win = st and st.chat.ui.winnr
+  if not (win and vim.api.nvim_win_is_valid(win)) or vim.api.nvim_win_get_config(win).relative == '' then return end
+  local needed = vim.api.nvim_win_text_height(win, {}).all
+  local height = vim.api.nvim_win_get_height(win)
+  local topline = vim.fn.getwininfo(win)[1].topline
+  local scrolled = needed <= height and topline ~= 1
+  local at_end = vim.api.nvim_win_get_cursor(win)[1] == vim.api.nvim_buf_line_count(bufnr)
+  local unfilled = needed > height and at_end and vim.api.nvim_win_text_height(win, { start_row = topline - 1 }).all < height
+  if math.max(1, math.min(needed, vim.o.lines - 6)) ~= height or scrolled or unfilled then fit(st.chat) end
+end
+vim.api.nvim_set_decoration_provider(vim.api.nvim_create_namespace 'butwhy.refit', {
+  on_win = function(_, _, bufnr)
+    if states[bufnr] and not checking[bufnr] then
+      checking[bufnr] = true
+      vim.schedule(function()
+        checking[bufnr] = nil
+        check_fit(bufnr)
+      end)
+    end
+    return false
+  end,
+})
 
 ---When a request in this chat fails before any answer arrives, send the conversation again to
 ---the fallback model. The pop-up then stays on the fallback, so drilling down does not wait for
