@@ -69,6 +69,8 @@ check('math = latex (default): LaTeX, inline only for flat expressions, the rest
   assert(s:find('own line', 1, true), 'display rule missing:\n' .. s)
   -- Renderers such as snacks.nvim only find maths between $ signs; in Markdown `\[` is an escaped `[`.
   assert(s:find('never \\[...\\]', 1, true) and s:find('\\(...\\)', 1, true), 'other delimiters not ruled out:\n' .. s)
+  -- Punctuation left after the closing $ can wrap onto a row of its own.
+  assert(s:find('inside the dollar signs', 1, true), 'punctuation rule missing:\n' .. s)
 end)
 
 check('math = plain: Unicode maths, no LaTeX', function()
