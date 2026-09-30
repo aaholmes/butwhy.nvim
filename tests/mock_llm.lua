@@ -3,7 +3,8 @@
 -- start(chunks) returns { port, requests }: each POST's decoded JSON body is appended to
 -- `requests` and answered by streaming `chunks` as the assistant's reply (or chunks[n] for the
 -- nth request, if chunks is a list of lists); GET (the model list)
--- returns one model, `mock-model`.
+-- returns one model, `mock-model`. A reply of the form { status = 402, body = '...' } is sent as
+-- that HTTP error instead.
 local M = {}
 
 local function sse(chunks)
@@ -47,6 +48,10 @@ function M.start(chunks)
       state.count = (state.count or 0) + 1
       local reply = type(chunks[1]) == 'table' and (chunks[state.count] or chunks[#chunks]) or chunks
       vim.schedule(function() table.insert(state.requests, vim.json.decode(body)) end)
+      if reply.status then
+        local err = 'HTTP/1.1 ' .. reply.status .. ' Error\r\nContent-Type: application/json\r\nContent-Length: ' .. #reply.body .. '\r\nConnection: close\r\n\r\n' .. reply.body
+        return client:write(err, function() client:close() end)
+      end
       client:write(sse(reply), function() client:close() end)
     end)
   end)

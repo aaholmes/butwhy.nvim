@@ -113,6 +113,17 @@ require('butwhy').setup { adapter = { name = 'anthropic', model = 'claude-haiku-
 require('butwhy').setup { adapter = false }           -- CodeCompanion's configured chat adapter
 ```
 
+To have a second model answer when a request fails (credit used up, a network error, a bad key),
+set `fallback`, in any of the forms `adapter` accepts. The pop-up then stays on the fallback, and
+the next pop-up tries the main model first:
+
+```lua
+require('butwhy').setup { fallback = 'ollama_cloud' }
+```
+
+OpenAI reports exhausted credit as a rate-limit error, which is retried three times before the
+fallback is asked, so each explanation takes a few seconds longer until credit is added.
+
 Models on Baseten, Groq, OpenRouter and similar hosts use the OpenAI-compatible format: define an
 adapter by extending `openai_compatible` with the host's URL, key variable and model name, as
 butwhy's own adapters do in `lua/butwhy/init.lua`. You can also switch adapter inside any open

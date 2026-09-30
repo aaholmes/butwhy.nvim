@@ -8,6 +8,9 @@ local defaults = {
   -- Any CodeCompanion adapter: a name, { name = ..., model = ... }, or false to use the
   -- chat adapter configured in CodeCompanion.
   adapter = { name = 'openai_luna', model = 'gpt-6-luna' },
+  -- Asked instead when a request to `adapter` fails before any answer arrives (no credit left,
+  -- a network error, a bad key). Same forms as `adapter`; false for none.
+  fallback = false,
   -- The answer pop-up: any CodeCompanion chat window options, applied to butwhy chats only.
   -- A floating pop-up is resized to fit its text, up to max_width columns.
   window = { layout = 'float', width = 40, height = 1, border = 'rounded', title = ' butwhy ' },
@@ -223,6 +226,28 @@ local function fit(chat)
   if needed <= height then vim.api.nvim_win_call(win, function() vim.fn.winrestview { topline = 1 } end) end
 end
 
+---When a request in this chat fails before any answer arrives, send the conversation again to
+---the fallback model. The pop-up then stays on the fallback, so drilling down does not wait for
+---the main model to fail again; the next pop-up tries the main model first.
+local function use_fallback_on_error(chat)
+  local switched, failed = false, false
+  -- Read the status in done(): by the time on_completed runs, CodeCompanion has cleared it.
+  local done = chat.done
+  function chat:done(...)
+    failed = self.status == 'error'
+    return done(self, ...)
+  end
+  chat:add_callback('on_completed', function(c)
+    local last = c.messages[#c.messages]
+    if switched or not failed or not last or last.role ~= 'user' then return end
+    switched = true
+    c:change_adapter(M.fallback.name)
+    if M.fallback.model then c:change_model { model = M.fallback.model } end
+    vim.notify(string.format('butwhy: request failed; asking %s instead', model_name(c) or M.fallback.name), vim.log.levels.WARN)
+    vim.schedule(function() c:submit { auto_submit = true } end)
+  end)
+end
+
 ---Open a chat in a pop-up beside the highlight that shows only the conversation's visible part.
 ---kind 'explain' sends the explain prompt at once; kind 'ask' sends nothing until the reader
 ---types a question. Prompts go as hidden messages; the chat stays a normal CodeCompanion chat, so
@@ -246,6 +271,7 @@ local function open_popup(kind, context)
     window_opts = vim.tbl_extend('force', M.window, { title = title }),
   }
   if not chat then return end
+  if M.fallback then use_fallback_on_error(chat) end
 
   local anchor = {
     win = context.winnr,
@@ -354,6 +380,7 @@ function M.setup(opts)
   M.adapter = type(adapter) == 'string' and { name = adapter } or adapter or nil
   M.window = opts.window
   M.max_width = opts.max_width
+  M.fallback = type(opts.fallback) == 'string' and { name = opts.fallback } or opts.fallback or nil
 
   set_hl()
   vim.api.nvim_create_autocmd('ColorScheme', { group = vim.api.nvim_create_augroup('butwhy.hl', { clear = true }), callback = set_hl })
