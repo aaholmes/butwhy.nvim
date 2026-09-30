@@ -67,6 +67,8 @@ check('math = latex (default): LaTeX, inline only for flat expressions, the rest
   assert(s:find('$...$', 1, true) and s:find('$$...$$', 1, true), 'LaTeX delimiters missing:\n' .. s)
   assert(s:find('\\sqrt', 1, true) and s:find('\\frac', 1, true), 'tall constructs not named:\n' .. s)
   assert(s:find('own line', 1, true), 'display rule missing:\n' .. s)
+  -- Renderers such as snacks.nvim only find maths between $ signs; in Markdown `\[` is an escaped `[`.
+  assert(s:find('never \\[...\\]', 1, true) and s:find('\\(...\\)', 1, true), 'other delimiters not ruled out:\n' .. s)
 end)
 
 check('math = plain: Unicode maths, no LaTeX', function()
