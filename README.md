@@ -186,6 +186,9 @@ require('butwhy').setup {
   -- A floating pop-up is resized to fit its text, wrapping at max_width columns.
   window = { layout = 'float', border = 'rounded', title = ' butwhy ' },
   max_width = 80,
+  -- How answers write maths: 'latex' ($...$ and $$...$$, for a Neovim setup that renders
+  -- LaTeX) or 'plain' (Unicode symbols such as √ and ≥, readable anywhere).
+  math = 'latex',
   -- Keys butwhy maps (`simpler` and `close` only inside the pop-up); false, for all or one,
   -- maps nothing. :ButwhyExplain, :ButwhyAsk and :ButwhySimpler work either way.
   keymaps = { explain = '<leader>we', ask = '<leader>wa', simpler = '<leader>ws', close = { 'q', '<Esc>' } },

@@ -7,6 +7,8 @@ few plain sentences (at most 4, under 80 words). Add a tiny example only
 if it fits in one sentence. No headings, lists, links or preamble; start
 with the answer itself.
 
+${butwhy.math}
+
 When asked for a lower level: remove one layer of jargon, define every
 term your previous answer depended on, and use a simpler example.
 Do not simply make the answer longer.

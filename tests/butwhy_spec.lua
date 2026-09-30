@@ -62,6 +62,28 @@ check('system prompt: tutor role, highlight is the topic, a few sentences', func
   assert(not s:find('${', 1, true), 'unresolved placeholder')
 end)
 
+check('math = latex (default): LaTeX, inline only for flat expressions, the rest displayed', function()
+  local s = prompts.render('system', ctx(1, 1))
+  assert(s:find('$...$', 1, true) and s:find('$$...$$', 1, true), 'LaTeX delimiters missing:\n' .. s)
+  assert(s:find('\\sqrt', 1, true) and s:find('\\frac', 1, true), 'tall constructs not named:\n' .. s)
+  assert(s:find('own line', 1, true), 'display rule missing:\n' .. s)
+end)
+
+check('math = plain: Unicode maths, no LaTeX', function()
+  require('butwhy').setup { background = root .. '/tests/fixtures/background.md', math = 'plain' }
+  local s = prompts.render('system', ctx(1, 1))
+  require('butwhy').setup { background = root .. '/tests/fixtures/background.md' }
+  assert(s:find('Unicode', 1, true), 'Unicode instruction missing:\n' .. s)
+  assert(not s:find('$...$', 1, true), 'LaTeX instruction still present:\n' .. s)
+  assert(not s:find('${', 1, true), 'unresolved placeholder')
+end)
+
+check('math: an unknown value is rejected by setup', function()
+  local ok, err = pcall(require('butwhy').setup, { background = root .. '/tests/fixtures/background.md', math = 'mathml' })
+  require('butwhy').setup { background = root .. '/tests/fixtures/background.md' }
+  assert(not ok and tostring(err):find('math', 1, true), 'expected an error naming math, got: ' .. tostring(err))
+end)
+
 for _, name in ipairs { 'explain', 'ask' } do
   check(name .. ' prompt: placeholders resolve, highlight and surroundings kept separate', function()
     local user = prompts.render(name, ctx(100, 101))

@@ -18,6 +18,13 @@ end
 
 function M.filename(ctx) return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(ctx.bufnr), ':t') end
 
+-- 'latex' or 'plain'; set by setup { math = ... }. Picks prompts/math_<mode>.md.
+M.math_mode = 'latex'
+M.MATH_MODES = { latex = true, plain = true }
+
+---How the answer should write maths.
+function M.math() return vim.trim(table.concat(vim.fn.readfile(M.dir .. '/math_' .. M.math_mode .. '.md'), '\n')) end
+
 ---Fill prompts/<name>.md for a buffer context. Unknown placeholders are left as they are.
 function M.render(name, ctx)
   local text = vim.trim(table.concat(vim.fn.readfile(M.dir .. '/' .. name .. '.md'), '\n'))

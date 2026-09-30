@@ -15,6 +15,9 @@ local defaults = {
   -- A floating pop-up is resized to fit its text, up to max_width columns.
   window = { layout = 'float', width = 40, height = 1, border = 'rounded', title = ' butwhy ' },
   max_width = 80,
+  -- How answers write maths: 'latex' ($...$, for a buffer that renders it, e.g. with
+  -- snacks.nvim) or 'plain' (Unicode symbols, readable anywhere).
+  math = 'latex',
   -- Keys butwhy maps; false (for all, or one entry) maps nothing. The commands work either way.
   -- `simpler` and `close` (Normal mode) apply inside the pop-up only.
   keymaps = { explain = '<leader>we', ask = '<leader>wa', simpler = '<leader>ws', close = { 'q', '<Esc>' } },
@@ -375,6 +378,11 @@ local function run(kind, cmd_opts) open_popup(kind, get_context(cmd_opts)) end
 function M.setup(opts)
   opts = vim.tbl_extend('force', defaults, opts or {})
   local config = require 'codecompanion.config'
+  local prompts = require 'butwhy.prompts'
+  if not prompts.MATH_MODES[opts.math] then
+    error(string.format("butwhy: math must be 'latex' or 'plain', got %s", vim.inspect(opts.math)), 2)
+  end
+  prompts.math_mode = opts.math
 
   local adapter = opts.adapter
   M.adapter = type(adapter) == 'string' and { name = adapter } or adapter or nil
