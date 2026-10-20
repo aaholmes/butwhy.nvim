@@ -161,7 +161,9 @@ chat with CodeCompanion's own keymap (press `?` in the chat to list them).
   answers (12 of 13) but made more mistakes in the simpler steps.
 - **Close second, open weights:** Kimi K3 on Baseten, with reasoning off; it costs about 30 times
   as much per token as Luna.
-- **Fastest and cheapest:** Mercury 2.5, at the cost of lower accuracy.
+- **Fastest and cheapest:** Mercury 2.5, at the cost of lower accuracy. Mercury 3 is slightly
+  faster but no more accurate overall; its simpler steps were judged simpler least often of any
+  model tested.
 
 ### Model comparison
 
@@ -170,20 +172,23 @@ steps): Python, Rust and C code, a GPU kernel, LaTeX equations, a Markdown desig
 Wikipedia passages outside the reader's field (property law and immunology). A separate model
 graded every answer using a written reference answer, without knowing which model produced it.
 All models ran with reasoning off, or at the lowest setting where it cannot be turned off, so
-none was spending extra time thinking. Grading was done in four passes; models graded in more
+none was spending extra time thinking. Grading was done in five passes; models graded in more
 than one pass show the average. Tested September and October 2026.
 
 | Model (provider) | Answers fully correct (of 52) | First answer correct (of 13) | Steps judged simpler | Median time | Price per 1M tokens (input / output) |
 |---|---|---|---|---|---|
-| GPT-6 Luna (OpenAI) | 85% | 12 | 80% | 1.6 s | $0.10 / $0.50 |
-| Kimi K3 (Baseten) | 77% | 9.7 | 72% | 1.5 s | $3.00 / $15.00 |
+| GPT-6 Luna (OpenAI) | 87% | 12 | 82% | 1.6 s | $0.10 / $0.50 |
+| Kimi K3 (Baseten) | 76% | 9.1 | 71% | 1.5 s | $3.00 / $15.00 |
 | Claude Haiku 5.5 (Anthropic) | 71% | 12 | 77% | 1.9 s | $0.10 / $0.50 |
+| MiniMax M3.1 Flash, minimal reasoning (OpenRouter) | 69% | 11 | 46% | 2.5 s | free on OpenRouter |
 | DeepSeek V4 Pro (Baseten) | 67% | 7 | 72% | 1.2 s | $1.32 / $3.96 |
-| Gemma 4 31B (Ollama Cloud) | 66% | 8.5 | 81% | 1.0 s | free plan; $0.14 / $0.40 after |
+| Gemma 4 31B (Ollama Cloud) | 67% | 8.4 | 80% | 1.0 s | free plan; $0.14 / $0.40 after |
+| DeepSeek V4.1-Flash (OpenRouter) | 56% | 6 | 59% | 1.9 s | $0.15 / $0.60 |
+| Mercury 3, `instant` (Inception) | 54% | 9 | 41% | 0.8 s | $0.10 / $0.35 (launch price) |
 | Muse Glimmer 30B, minimal reasoning (OpenRouter) | 52% | 6 | 44% | 5.5 s | $0.30 / $1.20 |
 | Claude Haiku 4.5 (Anthropic) | 52% | 6.5 | 82% | 2.0 s | $1.00 / $5.00 |
 | Gemma 4 26B-A4B (OpenRouter) | 50% | 7 | 31% | 2.1 s | $0.09 / $0.30 |
-| Mercury 2.5, `instant` (Inception) | 46% | 5.8 | 56% | 0.9 s | $0.04 / $0.15 (launch price) |
+| Mercury 2.5, `instant` (Inception) | 49% | 6.3 | 56% | 0.9 s | $0.04 / $0.15 (launch price) |
 | Nemotron 3 Ultra (Ollama Cloud) | 44% | 3 | 74% | 14 s | free plan |
 | Qwen 3.8 27B (Groq) | 42% | 4 | 79% | 0.6 s | free plan |
 | Qwen 3.6 35B-A3B (OpenRouter) | 42% | 5 | 54% | 1.1 s | $0.15 / $1.00 |
@@ -194,10 +199,12 @@ than one pass show the average. Tested September and October 2026.
 
 Read the table with its limits in mind. Each model gave one answer per highlight, and 13
 highlights is a small set: only gaps of roughly 15 to 30 percentage points, depending on the
-pair, are larger than the noise. GPT-6 Luna scored higher than Gemma 4 31B in all three passes that
-included both, by more than the noise in two of them; its leads over Kimi K3 and Claude Haiku 5.5
-were within the noise. Models graded in several passes scored
-within about 4 percentage points of their own average each time. The grader was itself a
+pair, are larger than the noise. GPT-6 Luna scored higher than Gemma 4 31B in all four passes that
+included both, by more than the noise in three of them. It also scored higher than Kimi K3 in all
+three passes that included both, by more than the noise in one; its lead over Claude Haiku 5.5 was
+within the noise. Models graded in several passes scored within about 5 percentage points of their
+own average each time, except Mercury 2.5 `instant`, which scored 13 points above its average in
+the latest pass. The grader was itself a
 language model. The evaluation set is not published, because several highlights come from
 unpublished code; the table is a guide, not a reproducible benchmark. One highlight, a piece of collision-avoidance geometry, was answered wrongly or
 imprecisely by nearly every model. Times are for each provider's service on the day, including
