@@ -223,6 +223,11 @@ require('butwhy').setup {
   -- How answers write maths: 'latex' ($...$ and $$...$$, for a Neovim setup that renders
   -- LaTeX) or 'plain' (Unicode symbols such as √ and ≥, readable anywhere).
   math = 'latex',
+  -- Extra context from outside the surrounding lines: 'lsp' sends the definitions (with their
+  -- doc comments) of identifiers in the selection, found by the buffer's language servers, when
+  -- they are in another file of the project or far from the selection. Or a function(context)
+  -- returning { { source = ..., text = ... }, ... }; false for none.
+  related = false,
   -- Keys butwhy maps (`simpler` and `close` only inside the pop-up); false, for all or one,
   -- maps nothing. :ButwhyExplain, :ButwhyAsk and :ButwhySimpler work either way.
   keymaps = { explain = '<leader>we', ask = '<leader>wa', simpler = '<leader>ws', close = { 'q', '<Esc>' } },
@@ -243,6 +248,9 @@ inside Neovim, so no API key or network is needed:
 nvim --headless -u tests/minimal_init.lua -c 'luafile tests/butwhy_spec.lua'
 nvim --headless -u tests/minimal_init.lua -c 'luafile tests/popup_spec.lua'
 nvim --headless -u tests/minimal_init.lua -c 'luafile tests/ask_spec.lua'
+nvim --headless -u tests/minimal_init.lua -c 'luafile tests/fallback_spec.lua'
+nvim --headless -u tests/minimal_init.lua -c 'luafile tests/related_spec.lua'
+nvim --headless -u tests/minimal_init.lua -c 'luafile tests/lsp_spec.lua'
 ```
 
 Dependencies are loaded with `:packadd`; set `BUTWHY_DEPS` to a directory containing

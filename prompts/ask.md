@@ -10,4 +10,4 @@ SURROUNDING TEXT:
 ${butwhy.surrounding}
 ~~~
 
-The reader will now ask a question about the HIGHLIGHT. Answer that question.
+${butwhy.related}The reader will now ask a question about the HIGHLIGHT. Answer that question.

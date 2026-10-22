@@ -25,6 +25,17 @@ M.MATH_MODES = { latex = true, plain = true }
 ---How the answer should write maths.
 function M.math() return vim.trim(table.concat(vim.fn.readfile(M.dir .. '/math_' .. M.math_mode .. '.md'), '\n')) end
 
+---Text from outside the surroundings (ctx.related: a list of { source, text }), as one labelled
+---block followed by a blank line, or '' when there is none (so the template's line disappears).
+function M.related(ctx)
+  if not (ctx.related and #ctx.related > 0) then return '' end
+  local out = { 'RELATED TEXT (found outside the surrounding text; context only, not the topic):' }
+  for _, r in ipairs(ctx.related) do
+    out[#out + 1] = '--- ' .. r.source .. '\n~~~\n' .. vim.trim(r.text) .. '\n~~~'
+  end
+  return table.concat(out, '\n') .. '\n\n'
+end
+
 ---Fill prompts/<name>.md for a buffer context. Unknown placeholders are left as they are.
 function M.render(name, ctx)
   local text = vim.trim(table.concat(vim.fn.readfile(M.dir .. '/' .. name .. '.md'), '\n'))

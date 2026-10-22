@@ -18,6 +18,10 @@ local defaults = {
   -- How answers write maths: 'latex' ($...$, for a buffer that renders it, e.g. with
   -- snacks.nvim) or 'plain' (Unicode symbols, readable anywhere).
   math = 'latex',
+  -- Text from outside the surroundings to send as context: 'lsp' (definitions of the
+  -- highlight's identifiers, from the buffer's language servers), a function(context) returning
+  -- a list of { source = ..., text = ... }, or false for none.
+  related = false,
   -- Keys butwhy maps; false (for all, or one entry) maps nothing. The commands work either way.
   -- `simpler` and `close` (Normal mode) apply inside the pop-up only.
   keymaps = { explain = '<leader>we', ask = '<leader>wa', simpler = '<leader>ws', close = { 'q', '<Esc>' } },
@@ -383,6 +387,14 @@ local function open_popup(kind, context)
   show_hint(chat)
   fit(chat)
 
+  if M.related then
+    local ok, entries = pcall(M.related, context)
+    if ok then
+      context.related = entries
+    else
+      vim.notify('butwhy: related text failed: ' .. tostring(entries), vim.log.levels.WARN)
+    end
+  end
   -- Added after creation so the background (attached when the chat is created) precedes it.
   chat:add_message({ role = 'user', content = prompts.render(kind, context) }, { visible = false })
   if kind == 'explain' then
@@ -432,6 +444,12 @@ function M.setup(opts)
   M.adapter = type(adapter) == 'string' and { name = adapter } or adapter or nil
   M.window = opts.window
   M.max_width = opts.max_width
+  local related = opts.related
+  if type(related) == 'string' then
+    related = require('butwhy.related').providers[related]
+    if not related then error(string.format('butwhy: unknown related provider %s', vim.inspect(opts.related)), 2) end
+  end
+  M.related = related or nil
   M.fallback = type(opts.fallback) == 'string' and { name = opts.fallback } or opts.fallback or nil
 
   set_hl()

@@ -100,6 +100,36 @@ for _, name in ipairs { 'explain', 'ask' } do
   end)
 end
 
+for _, name in ipairs { 'explain', 'ask' } do
+  check(name .. ' prompt: no related text means no RELATED block and no run of blank lines', function()
+    local user = prompts.render(name, ctx(100, 101))
+    assert(not user:find('RELATED', 1, true), 'unexpected related block:\n' .. user)
+    assert(not user:find('\n\n\n', 1, true), 'run of blank lines:\n' .. user)
+  end)
+
+  check(name .. ' prompt: related text goes in its own labelled block after the surroundings', function()
+    local c = ctx(100, 101)
+    c.related = {
+      { source = 'src/node.rs:63-64', text = '/// Total value (relative to side that just moved)\npub total_value: f64,' },
+      { source = 'Chess Programming Wiki', text = 'Multi-Cut 100% prunes' },
+    }
+    local user = prompts.render(name, c)
+    local rel = user:find('RELATED TEXT', 1, true)
+    assert(rel, 'related header missing:\n' .. user)
+    assert(rel > user:find('SURROUNDING TEXT', 1, true), 'related block comes before the surroundings')
+    assert(user:find('context only', rel, true), 'related block not marked as context only')
+    assert(user:find('src/node.rs:63-64', rel, true) and user:find('pub total_value: f64,', rel, true), 'first entry missing')
+    assert(user:find('Chess Programming Wiki', rel, true) and user:find('Multi-Cut 100% prunes', rel, true), 'second entry missing')
+    assert(not user:find('\n\n\n', 1, true), 'run of blank lines:\n' .. user)
+  end)
+end
+
+check('blank-line runs in the highlighted code survive rendering', function()
+  local c = ctx(1, 1)
+  c.code = 'def a():\n    pass\n\n\ndef b():'
+  assert(prompts.render('explain', c):find('pass\n\n\ndef b', 1, true), 'blank lines collapsed')
+end)
+
 check('a % in the highlighted code survives rendering', function()
   local c = ctx(1, 1)
   c.code = 'x = 5 % 3 -- %d %1'

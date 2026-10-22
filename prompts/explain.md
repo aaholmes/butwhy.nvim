@@ -10,4 +10,4 @@ SURROUNDING TEXT:
 ${butwhy.surrounding}
 ~~~
 
-Explain the HIGHLIGHT at level 0: what it is and what it does here.
+${butwhy.related}Explain the HIGHLIGHT at level 0: what it is and what it does here.
