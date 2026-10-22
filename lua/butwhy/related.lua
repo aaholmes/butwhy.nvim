@@ -8,7 +8,8 @@ M.defaults = {
   max_entries = 4,
   max_lines = 12, -- per definition
   max_chars = 3000, -- all entries together
-  radius = 40, -- lines each side of the highlight already sent as surroundings
+  chunk_lines = 20, -- longest paragraph keyword search returns in one piece
+  -- radius: lines each side of the highlight already sent; default the prompts' surroundings
 }
 
 -- Words that are never worth a request.
@@ -92,8 +93,12 @@ end
 
 ---Definitions of the identifiers in the highlight, found with the buffer's language servers, that
 ---lie outside the surroundings and inside the project.
+local function options(opts)
+  return vim.tbl_extend('force', M.defaults, { radius = require('butwhy.prompts').radius }, opts or {})
+end
+
 function M.lsp(context, opts)
-  opts = vim.tbl_extend('force', M.defaults, opts or {})
+  opts = options(opts)
   local buf = context.bufnr
   local clients = vim.tbl_filter(function(c) return c:supports_method('textDocument/definition', buf) end, vim.lsp.get_clients { bufnr = buf })
   if #clients == 0 then return {} end
@@ -144,7 +149,149 @@ function M.lsp(context, opts)
   return entries
 end
 
-M.providers = { lsp = M.lsp }
+-- Keyword search: BM25 over the buffer's paragraphs, for text with no language server.
+
+local STOP = {}
+for w in ([[a an the and or but if then else of to in on at by for with from as is are was were be
+  been being it its this that these those there here we you they he she i our your their his her
+  not no so than too very can could would should will shall may might must do does did done has
+  have had about into over under after before between also just only such each all any some more
+  most other which who whom what when where why how one two use used using]]):gmatch '%S+' do
+  STOP[w] = true
+end
+for w in pairs(KEYWORDS) do
+  STOP[w:lower()] = true
+end
+
+---Search terms in a string: lowercase words (camelCase and snake_case split), without stop words,
+---with plurals folded to the singular.
+local function tokens(s)
+  local out = {}
+  for w in s:gsub('(%l)(%u)', '%1 %2'):lower():gmatch '%a[%a%d]*' do
+    if #w >= 2 and not STOP[w] then
+      if #w > 4 and w:sub(-3) == 'ies' then
+        w = w:sub(1, -4) .. 'y'
+      elseif #w > 3 and w:sub(-1) == 's' and not w:match '[sui]s$' then
+        w = w:sub(1, -2)
+      end
+      out[#out + 1] = w
+    end
+  end
+  return out
+end
+
+-- Whether a line leaves a docstring or block comment open: the closing delimiter of `open` (a
+-- docstring quote or '/*') when it is open after this line, else nil.
+local function block_after(line, open)
+  for _, q in ipairs { '"""', "'''" } do
+    local _, n = line:gsub(q, '')
+    if (open == q) ~= (n % 2 == 1) then return q end
+    if open == q or n > 0 then return nil end
+  end
+  if open == '/*' then return not line:find('*/', 1, true) and '/*' or nil end
+  local last_open = line:match '.*()/%*'
+  if last_open and not line:find('*/', last_open, true) then return '/*' end
+end
+
+---Paragraphs (runs of non-blank lines, with a docstring or block comment kept whole across blank
+---lines), each cut into pieces of at most max_lines: { first, last }.
+local function chunks(lines, max_lines)
+  local out, start, open = {}, nil, nil
+  for i = 1, #lines + 1 do
+    local line = lines[i]
+    local blank = not (line and line:match '%S') and not (line and open)
+    if not blank and not start then start = i end
+    if line then open = block_after(line, open) end
+    if start and (blank or i - start + 1 == max_lines) then
+      out[#out + 1] = { first = start, last = blank and i - 1 or i }
+      start = nil
+    end
+  end
+  return out
+end
+
+-- Import lines and lone closing brackets: never worth sending.
+local function is_import(s)
+  return s:match '^%s*import%s' or s:match '^%s*from%s+%S+%s+import' or s:match '^%s*use%s' or s:match '^%s*#%s*include'
+    or s:match 'require%s*%(?[\'"]' or s:match '^%s*\\usepackage' or s:match '^%s*[%)}]?;?%s*$'
+end
+
+---Paragraphs of the buffer, outside the surroundings, that best match the highlight's words
+---(BM25). A paragraph must share at least two distinct terms with the highlight (or its one term).
+function M.keyword(context, opts)
+  opts = options(opts)
+  local buf = context.bufnr
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local query, seen = {}, {}
+  for _, line in ipairs(vim.list_slice(lines, context.start_line, context.end_line)) do
+    for _, t in ipairs(tokens(line)) do
+      if not seen[t] then
+        seen[t] = true
+        query[#query + 1] = t
+      end
+    end
+  end
+  if #query == 0 then return {} end
+
+  local docs, df, total = {}, {}, 0
+  for _, d in ipairs(chunks(lines, opts.chunk_lines)) do
+    local useful = false
+    for i = d.first, d.last do
+      useful = useful or not is_import(lines[i])
+    end
+    if useful then docs[#docs + 1] = d end
+  end
+  if #docs == 0 then return {} end
+  for _, d in ipairs(docs) do
+    d.tf, d.len = {}, 0
+    for i = d.first, d.last do
+      for _, t in ipairs(tokens(lines[i])) do
+        d.tf[t] = (d.tf[t] or 0) + 1
+        d.len = d.len + 1
+      end
+    end
+    for t in pairs(d.tf) do
+      df[t] = (df[t] or 0) + 1
+    end
+    total = total + d.len
+  end
+  local n, avg = #docs, math.max(total / #docs, 1)
+  local k1, b = 1.2, 0.75
+  local lo, hi = context.start_line - opts.radius, context.end_line + opts.radius
+  local need = math.min(2, #query)
+  local hits = {}
+  for _, d in ipairs(docs) do
+    if d.last < lo or d.first > hi then
+      local score, matched = 0, 0
+      for _, q in ipairs(query) do
+        local tf = d.tf[q]
+        if tf then
+          matched = matched + 1
+          local idf = math.log(1 + (n - df[q] + 0.5) / (df[q] + 0.5))
+          score = score + idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * d.len / avg))
+        end
+      end
+      if matched >= need then hits[#hits + 1] = { d = d, score = score } end
+    end
+  end
+  table.sort(hits, function(x, y) return x.score > y.score end)
+
+  local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ':t')
+  local entries, chars = {}, 0
+  for _, hit in ipairs(hits) do
+    if #entries >= opts.max_entries then break end
+    local text = table.concat(vim.list_slice(lines, hit.d.first, hit.d.last), '\n')
+    if chars + #text <= opts.max_chars then
+      chars = chars + #text
+      entries[#entries + 1] = { source = string.format('%s:%d-%d (keyword match)', name, hit.d.first, hit.d.last), text = text }
+    end
+  end
+  return entries
+end
+
+M.providers = { lsp = M.lsp, keyword = M.keyword }
 M._excerpt = excerpt -- for tests
+M._tokens = tokens
+M._chunks = chunks
 
 return M

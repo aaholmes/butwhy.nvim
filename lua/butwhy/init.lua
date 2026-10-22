@@ -18,9 +18,12 @@ local defaults = {
   -- How answers write maths: 'latex' ($...$, for a buffer that renders it, e.g. with
   -- snacks.nvim) or 'plain' (Unicode symbols, readable anywhere).
   math = 'latex',
+  -- Lines on each side of the highlight sent as surrounding context.
+  surrounding = 40,
   -- Text from outside the surroundings to send as context: 'lsp' (definitions of the
-  -- highlight's identifiers, from the buffer's language servers), a function(context) returning
-  -- a list of { source = ..., text = ... }, or false for none.
+  -- highlight's identifiers, from the buffer's language servers), 'keyword' (the file's
+  -- paragraphs that best match the highlight's words), a function(context) returning a list of
+  -- { source = ..., text = ... }, a list of these to combine, or false for none.
   related = false,
   -- Keys butwhy maps; false (for all, or one entry) maps nothing. The commands work either way.
   -- `simpler` and `close` (Normal mode) apply inside the pop-up only.
@@ -439,17 +442,40 @@ function M.setup(opts)
     error(string.format("butwhy: math must be 'latex' or 'plain', got %s", vim.inspect(opts.math)), 2)
   end
   prompts.math_mode = opts.math
+  if type(opts.surrounding) ~= 'number' or opts.surrounding < 0 then
+    error(string.format('butwhy: surrounding must be a number of lines, got %s', vim.inspect(opts.surrounding)), 2)
+  end
+  prompts.radius = opts.surrounding
 
   local adapter = opts.adapter
   M.adapter = type(adapter) == 'string' and { name = adapter } or adapter or nil
   M.window = opts.window
   M.max_width = opts.max_width
-  local related = opts.related
-  if type(related) == 'string' then
-    related = require('butwhy.related').providers[related]
-    if not related then error(string.format('butwhy: unknown related provider %s', vim.inspect(opts.related)), 2) end
+  local function provider(p)
+    if type(p) ~= 'string' then return p end
+    local f = require('butwhy.related').providers[p]
+    if not f then error(string.format('butwhy: unknown related provider %s', vim.inspect(p)), 3) end
+    return f
   end
-  M.related = related or nil
+  local related = opts.related
+  if type(related) == 'table' then
+    -- Several providers: their entries in order, skipping text another one already gave.
+    local list = vim.tbl_map(provider, related)
+    related = function(context)
+      local out = {}
+      for _, p in ipairs(list) do
+        for _, e in ipairs(p(context)) do
+          local dup = false
+          for _, o in ipairs(out) do
+            dup = dup or o.text:find(e.text, 1, true) ~= nil or e.text:find(o.text, 1, true) ~= nil
+          end
+          if not dup then out[#out + 1] = e end
+        end
+      end
+      return out
+    end
+  end
+  M.related = provider(related) or nil
   M.fallback = type(opts.fallback) == 'string' and { name = opts.fallback } or opts.fallback or nil
 
   set_hl()

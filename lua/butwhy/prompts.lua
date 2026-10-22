@@ -2,17 +2,18 @@
 -- ${butwhy.<helper>} placeholders. Read and filled here, so no YAML parser is needed.
 local M = {}
 
-local RADIUS = 40 -- lines of context on each side of the highlight
 
 -- prompts/ sits two levels above this file: <root>/lua/butwhy/prompts.lua
 local root = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(debug.getinfo(1, 'S').source:sub(2))))
 M.dir = root .. '/prompts'
 
+M.radius = 40 -- lines of context on each side of the highlight; setup { surrounding = n }
+
 ---The lines around the highlight, which the prompts send as context only.
 function M.surrounding(ctx)
   local total = vim.api.nvim_buf_line_count(ctx.bufnr)
-  local first = math.max(ctx.start_line - RADIUS, 1)
-  local last = math.min(ctx.end_line + RADIUS, total)
+  local first = math.max(ctx.start_line - M.radius, 1)
+  local last = math.min(ctx.end_line + M.radius, total)
   return table.concat(vim.api.nvim_buf_get_lines(ctx.bufnr, first - 1, last, false), '\n')
 end
 
